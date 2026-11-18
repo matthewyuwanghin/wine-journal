@@ -43,7 +43,7 @@
 
 **驗證**：開 <https://matthewyuwanghin.github.io/wine-journal/>（**唔好加 github.com**）
 
-> 新版 ⚙️ 設定 最底會顯示「版本 **v3.5 · 2026-11-18**」+ 「🔄 強制重新載入」掣。
+> 新版 ⚙️ 設定 最底會顯示「版本 **v3.6 · 2026-11-18**」+ 「🔄 強制重新載入」掣。
 > 撳嗰個掣就唔會再見到舊 cache 畫面。
 
 > ⚠️ 常見錯誤：`https://github.com/matthewyuwanghin.github.io/...` ← 多咗 `github.com` 就會 404
@@ -76,7 +76,7 @@
 | 手機優化 | WSET 段落自動收起、儲存掣固定底部、16px 字防縮放 |
 | 酒標相片 | 有 Serper key = 自動；冇 key = Google 搵圖 → 貼網址 → 套用 |
 | **備份與還原** | 回收桶（本機 30 筆）＋ Git 版本紀錄（app 內一鍵還原）＋ JSON/CSV 下載 |
-| **🔒 設定頁 PIN 鎖** | 設定分頁可完全隱藏；5 撳 logo 或 `?admin=1` 入 PIN 才見到（忘記可用 `?resetpin=1`） |
+| **🔒 設定頁 PIN 鎖** | 設定 PIN 後**即刻鎖定**（設定分頁消失）；解鎖後右上角 🔒 一撳再鎖；5 撳 logo 或 `?admin=1` 解鎖（忘記可用 `?resetpin=1` 清除） |
 | 由網頁抽主圖 | 貼 Vivino / 酒商產品頁連結 → 自動抽 og:image |
 | 圖片代理 | 原網站防盜連都顯示得到（`/api/img`） |
 

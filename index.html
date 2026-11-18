@@ -101,6 +101,12 @@ button,input,select,textarea{font-family:inherit;font-size:15px;color:inherit}
   transition:.18s;
 }
 .tabbar button .ic{font-size:17px;line-height:1}
+.quick-lock{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:10px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel-2);color:#fff;font-size:15px;
+}
+.quick-lock:active{opacity:.7}
 .tabbar button.locked{display:none !important}
 .tabbar button[aria-selected="true"]{
   color:#fff;background:linear-gradient(180deg,rgba(179,18,62,.35),rgba(179,18,62,.12));
@@ -460,6 +466,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
     </div>
     <div class="spacer"></div>
     <span class="pill" id="modePill" data-tone="warn"><span class="dot"></span><span id="modeText">連線中…</span></span>
+    <button type="button" id="quickLock" class="quick-lock hidden" title="鎖定設定頁" aria-label="鎖定設定頁">🔒</button>
   </header>
 
   <nav class="tabbar" role="tablist" aria-label="主要導航">
@@ -678,6 +685,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
             ① 連續撳左上角 <b>🍷 品酒手帳 logo 5 下</b>　② 或者開網址加 <code>?admin=1</code><br>
             ③ 解鎖後 12 小時內有效，重新開瀏覽器都要再入 PIN。<br>
             😅 <b>忘記 PIN？</b>網址加 <code>?resetpin=1</code>（會先問你確認）即可清除，重新設定。<br>
+            ✅ 設定 PIN 之後會<b>即刻鎖定</b>（設定分頁消失）；解鎖後右上角會出現 🔒 可以一撳再鎖。<br>
             ⚠️ 呢個係「唔好俾人隨便撳到」嘅 UI 鎖；<b>要連資料都私有</b>，就要喺 Cloudflare Worker
             設 <code>PROXY_KEY</code>，並喺上面「Proxy Key」欄填同一個值（咁冇 key 嘅人讀寫都做唔到）。
           </div>
@@ -1037,7 +1045,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v3.5 · 2026-11-18 · 設定頁 PIN 鎖";
+const APP_VERSION = "v3.6 · 2026-11-18 · PIN 設定後即鎖 + 一鍵鎖定";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -2326,6 +2334,8 @@ function applyLockUI() {
   const btn = document.querySelector('.tabbar button[data-view="settings"]');
   const hide = lockEnabled() && !isUnlocked();
   if (btn) btn.classList.toggle("locked", hide);
+  const ql = $("#quickLock");
+  if (ql) ql.classList.toggle("hidden", !(lockEnabled() && isUnlocked()));
   const st = $("#lockStatus");
   if (st) st.innerHTML = lockEnabled()
     ? (isUnlocked() ? `<span style="color:#59c07e">🔓 已解鎖（${UNLOCK_HOURS} 小時內有效）</span>` : `<span style="color:#e3b356">🔒 已鎖定</span>`)
@@ -2410,10 +2420,11 @@ function changePinFlow() {
           const salt = newSalt();
           const hash = await hashPin(pin, salt);
           lockSave({ enabled: true, salt, hash, at: new Date().toISOString() });
-          setUnlocked();
+          try { sessionStorage.removeItem(UNLOCK_SESSION); } catch (_) {}
           $("#modalRoot").innerHTML = "";
           applyLockUI();
-          toast("✅ 已設定 PIN：設定頁以後要解鎖先見到", 3600);
+          if (STATE.view === "settings") switchView("add");
+          toast("✅ PIN 已設定，設定頁已即刻鎖定", 4200);
           return null;
         },
       });
@@ -2441,6 +2452,11 @@ function disablePin() {
 }
 
 /** 連續撳品牌 logo 5 下 = 秘密入口 */
+function wireQuickLock() {
+  const ql = $("#quickLock");
+  if (ql) ql.addEventListener("click", () => lockNow());
+}
+
 function wireSecretEntry() {
   const brand = document.querySelector(".brand");
   if (!brand) return;
@@ -3101,6 +3117,7 @@ async function boot() {
 
   wireSettings();
   wireSecretEntry();
+  wireQuickLock();
   if (SETUP_IMPORTED) toast("🔗 已由設定連結自動套用雲端設定", 3200);
   await photoCache.init();
   await reconnect();
