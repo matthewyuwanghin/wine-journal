@@ -779,7 +779,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const CFG_KEY = "wj.settings.v1";
+const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
   token: "", owner: "", repo: "", branch: "main", path: "data/tastings.json",
@@ -803,16 +803,15 @@ const DEFAULT_CFG = {
    ======================================================================= */
 const BUILTIN_CONFIG = (() => {
   const raw = {
-    mode: "github",
+    mode: "proxy",    // ✅ 預設：Cloudflare Worker 代理（瀏覽器完全冇 token）
+    proxyUrl: "https://wine-journal-proxy.matthew-wanghin.workers.dev",
+    proxyKey: "",     // Worker 冇設 PROXY_KEY，所以留空
     owner: "matthewyuwanghin",
     repo: "wine-journal-data",
     branch: "main",
     path: "data/tastings.json",
     skipPhotos: true,
-    token_b64: "",    // ← 故意留空：GitHub token 只存喺各裝置 localStorage（避免被 secret scanning 撤銷）
-    proxyUrl: "",     // ← 如果你用 Cloudflare Worker 代理，填 Worker 網址，例如
-                      //    "https://wine-journal-proxy.你的名.workers.dev"
-    proxyKey: ""      // ← Worker 嘅 PROXY_KEY（選填；填了就所有裝置零設定）
+    token_b64: ""     // GitHub token 唔會出現喺前端（Worker 代你加）
   };
   const cfg = Object.assign({}, raw, { token: "" });
   try { cfg.token = raw.token_b64 ? atob(raw.token_b64) : ""; } catch (_) { cfg.token = ""; }
@@ -1853,16 +1852,27 @@ function renderSettings() {
   const last = CFG.lastSync ? new Date(CFG.lastSync).toLocaleString("zh-HK") : "未有紀錄";
   $("#syncHint").textContent = "而家用緊：" + DB.label;
   const persist = (() => { try { localStorage.setItem("wj.test", "1"); localStorage.removeItem("wj.test"); return true; } catch (_) { return false; } })();
-  const hasToken = !!CFG.token;
-  const builtinNote = hasToken
-    ? `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #2c5741;background:rgba(79,174,122,.10);border-radius:10px;color:#bfe6cf;font-size:12.5px;line-height:1.6">
-         ✅ 呢部裝置已連接 <b>${esc(CFG.owner)}/${esc(CFG.repo)}</b>（token 只存在本機 localStorage，唔會寫入網站檔案）。
-         新裝置想一鍵設定：撳下面 <b>🔗 產生設定連結</b>，用手機打開該連結即可。
-       </div>`
-    : `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
-         ⚠️ 呢部裝置仲未接駁雲端。喺下面貼上 token → <b>🔌 測試連線</b> → <b>💾 儲存並重新連線</b>。
-         為安全理由，token <b>唔會</b>寫入 <code>index.html</code>（GitHub secret scanning 會掃到並撤銷），設定好之後可以用 <b>🔗 產生設定連結</b> 令其他裝置一鍵設定。
-       </div>`;
+  const usingProxy = (CFG.mode === "proxy" || (CFG.mode === "auto" && CFG.proxyUrl)) && !!CFG.proxyUrl;
+  const connected = DB.key === "server" || (!!CFG.token && DB.key === "github") || (!!CFG.gistId && DB.key === "gist");
+  let builtinNote;
+  if (usingProxy && connected) {
+    builtinNote = `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #2c5741;background:rgba(79,174,122,.10);border-radius:10px;color:#bfe6cf;font-size:12.5px;line-height:1.6">
+      ✅ 已內建並連上 <b>Cloudflare Worker 代理</b>：<code>${esc(CFG.proxyUrl)}</code><br>
+      GitHub token 只存在 Worker，前端完全冇 token → <b>任何裝置一開網站就自動同步，唔使做任何設定</b>。
+    </div>`;
+  } else if (usingProxy) {
+    builtinNote = `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
+      ⚠️ 已內建 Worker 代理網址，但連唔到。撳 <b>🔌 測試連線</b> 睇錯誤原因（多數係 Worker 未 Deploy／變數未加）。
+    </div>`;
+  } else if (connected) {
+    builtinNote = `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #2c5741;background:rgba(79,174,122,.10);border-radius:10px;color:#bfe6cf;font-size:12.5px;line-height:1.6">
+      ✅ 呢部裝置已連接 <b>${esc(CFG.owner || "")}/${esc(CFG.repo || "")}</b>（token 只存在本機 localStorage）。新裝置想一鍵設定：撳 <b>🔗 產生設定連結</b>。
+    </div>`;
+  } else {
+    builtinNote = `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
+      ⚠️ 呢部裝置仲未接駁雲端。喺下面填 <b>Cloudflare Worker 代理網址</b>（或貼 GitHub token）→ <b>🔌 測試連線</b> → <b>💾 儲存並重新連線</b>。
+    </div>`;
+  }
   $("#cfgMsg").innerHTML = builtinNote +
     `<div>📍 現時儲存位置：<b style="color:#fff">${esc(DB.label)}</b>　·　記錄數：<b style="color:#fff">${STATE.records.length}</b>　·　上次同步：${esc(last)}</div>` +
     (persist ? "" : `<div style="margin-top:6px;color:#f0c98a">⚠️ 呢個環境唔可以寫 localStorage，所以設定只會生效到關掉為止（唔會記住）。部署到 GitHub Pages 或本機開就會記住。</div>`) +
