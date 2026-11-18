@@ -297,6 +297,8 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 }
 .qchip:hover,.qchip:active{border-color:var(--wine);color:#fff;background:rgba(179,18,62,.18)}
 .chips-grapes{max-height:none;overflow:visible}
+.chips + .more-btn,.chips-grapes + .more-btn{margin-top:8px;align-self:flex-start}
+.chip.chip-hidden{display:none !important}
 
 /* ============ Accordion ============ */
 .sg-head{
@@ -358,7 +360,11 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   .field label{font-size:13.5px}
   .field label em{font-size:10.5px}
   .chip{padding:10px 13px;font-size:13.5px;min-height:42px;display:inline-flex;align-items:center}
-  .chips{max-height:230px;gap:8px}
+  /* 香氣 chips 可滾動；葡萄 chips 一定唔可以鎖高度，否則會壓住下面欄位 */
+  .chips{max-height:44vh;overflow-y:auto;gap:8px}
+  .chips-grapes{max-height:none !important;overflow:visible !important}
+  .field{min-height:0}
+  .subgroup,.panel-body{overflow:visible}
   .score-btn{min-width:calc(20% - 6px);padding:13px 0;font-size:14px}
   .toggle{font-size:14px;padding:10px 0}
   .toggle input{width:22px;height:22px}
@@ -450,6 +456,10 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
       </div>
       <div class="panel-body">
         <div class="grid" id="metaGrid"></div>
+        <div id="metaMoreWrap" style="margin-top:14px">
+          <button type="button" class="btn sm ghost" id="metaMoreBtn">＋ 酒杯 · 溫度 · 醒酒（選填）</button>
+          <div class="grid hidden" id="metaMoreGrid" style="margin-top:14px"></div>
+        </div>
         <div class="grid" style="margin-top:14px">
           <div class="field wide">
             <label>相片 / 酒標 Photo <em>會被壓縮儲存，唔會上傳</em></label>
@@ -1357,9 +1367,16 @@ function metaControlHTML(f) {
   }
   if (f.kind === "date") return `<input id="${id}" data-path="${f.k}" type="date">`;
   if (f.kind === "chips") {
-    return `<div class="chips chips-grapes" data-gchips="${f.k}">
-        ${(f.chips || []).map((v) => `<button type="button" class="chip" data-gchip="${f.k}" data-val="${esc(v)}" aria-pressed="false">${esc(v)}</button>`).join("")}
-      </div>
+    const list = f.chips || [];
+    const LIMIT = 12;
+    const buttons = list.map((v, i) =>
+      `<button type="button" class="chip${i >= LIMIT ? " chip-hidden" : ""}" data-gchip="${f.k}" data-val="${esc(v)}" aria-pressed="false">${esc(v)}</button>`
+    ).join("");
+    const more = list.length > LIMIT
+      ? `<button type="button" class="btn sm ghost more-btn" data-more="${f.k}">顯示全部 ${list.length} 個品種 ▾</button>`
+      : "";
+    return `<div class="chips chips-grapes" data-gchips="${f.k}">${buttons}</div>
+      ${more}
       <input id="${cid}" class="custom-input" data-meta-custom="${f.k}" type="text" placeholder="其他葡萄（可用逗號分隔）" autocomplete="off">`;
   }
   // select
@@ -1371,15 +1388,31 @@ function metaControlHTML(f) {
   return html;
 }
 
+const ADVANCED_META = ["glass", "temp", "decant"];   // 收埋喺「選填細節」入面
+
 function buildMeta() {
-  const grid = $("#metaGrid");
-  grid.innerHTML = META_FIELDS.map((f) => `<div class="field${f.wide || f.kind === "chips" ? " wide" : ""}">
+  const cell = (f) => `<div class="field${f.wide || f.kind === "chips" ? " wide" : ""}">
       <label for="f_${f.k}">${esc(f.t)}${f.req ? " <em>必填</em>" : ""}</label>
       ${metaControlHTML(f)}
-    </div>`).join("");
+    </div>`;
+  const main = META_FIELDS.filter((f) => ADVANCED_META.indexOf(f.k) === -1);
+  const adv = META_FIELDS.filter((f) => ADVANCED_META.indexOf(f.k) > -1);
+  $("#metaGrid").innerHTML = main.map(cell).join("");
+  const mg = $("#metaMoreGrid");
+  if (mg) mg.innerHTML = adv.map(cell).join("");
+  // 手機預設收起，桌面預設展開
+  const isPhone = window.matchMedia("(max-width: 640px)").matches;
+  setMetaMore(!isPhone);
   rebuildRegionOptions();
   const d = $("#f_date"); if (d && !d.value) d.value = todayISO();
   const c = $("#f_currency"); if (c && !c.value) c.value = "HKD";
+}
+
+function setMetaMore(open) {
+  const box = $("#metaMoreGrid"), btn = $("#metaMoreBtn");
+  if (!box) return;
+  box.classList.toggle("hidden", !open);
+  if (btn) btn.textContent = open ? "－ 收起細節" : "＋ 酒杯 · 溫度 · 醒酒（選填）";
 }
 
 function rebuildRegionOptions() {
@@ -1497,6 +1530,14 @@ function wireMetaEvents() {
     if (k === "country") { rebuildRegionOptions(); toggleCustomInput("region"); }
   });
   grid.addEventListener("click", (e) => {
+    const more = e.target.closest("[data-more]");
+    if (more) {
+      const k = more.dataset.more;
+      const box = grid.querySelector(`[data-gchips="${k}"]`);
+      if (box) box.querySelectorAll(".chip-hidden").forEach((c) => c.classList.remove("chip-hidden"));
+      more.remove();
+      return;
+    }
     const g = e.target.closest("[data-gchip]");
     if (g) { g.setAttribute("aria-pressed", g.getAttribute("aria-pressed") === "true" ? "false" : "true"); return; }
     const q = e.target.closest("[data-quick]");
@@ -2316,6 +2357,11 @@ async function boot() {
   buildMeta();
   buildSAT();
   wireMetaEvents();
+  const moreBtn = $("#metaMoreBtn");
+  if (moreBtn) moreBtn.addEventListener("click", () => {
+    const box = $("#metaMoreGrid");
+    setMetaMore(box.classList.contains("hidden"));
+  });
   const accBtn = $("#accToggle");
   if (accBtn) accBtn.addEventListener("click", () => {
     const anyOpen = $$("[data-acc]").some((g) => g.querySelector(".sg-head").getAttribute("aria-expanded") === "true");
