@@ -300,6 +300,24 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 .chips + .more-btn,.chips-grapes + .more-btn{margin-top:8px;align-self:flex-start}
 .chip.chip-hidden{display:none !important}
 
+/* ============ 酒標相片 thumb ============ */
+.entry .thumb{position:relative;overflow:hidden}
+.entry .thumb .ph{font-size:22px;line-height:1}
+.entry .thumb .find{
+  position:absolute;right:2px;bottom:2px;font-size:9.5px;line-height:1;
+  background:rgba(0,0,0,.62);border-radius:6px;padding:2px 3px;
+}
+.entry .thumb[data-thumb]{cursor:pointer}
+.entry .thumb[data-thumb]:active{opacity:.7}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:10px}
+.photo-grid button{
+  padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1b1514;
+  cursor:pointer;aspect-ratio:3/4;
+}
+.photo-grid button img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-grid button[aria-pressed="true"]{border-color:var(--wine);box-shadow:0 0 0 2px rgba(179,18,62,.45)}
+.photo-grid button:active{opacity:.75}
+
 /* ============ Accordion ============ */
 .sg-head{
   display:flex;align-items:center;gap:10px;width:100%;
@@ -580,6 +598,19 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
               <option value="local">只存本機 IndexedDB（唔會離開呢部裝置）</option>
             </select>
           </div>
+        </div>
+
+        <div class="field wide" style="margin-top:14px">
+          <label class="toggle" for="cfgAutoImg" style="display:flex;gap:10px;align-items:flex-start">
+            <input type="checkbox" id="cfgAutoImg" style="width:20px;height:20px;flex:0 0 auto;margin-top:2px">
+            <span>🖼 儲存後自動上網搵酒標相片<br>
+              <em style="font-size:11.5px;color:var(--muted);font-style:normal">用 Wikimedia Commons / Wikipedia（免費、唔使 API key）。搵唔到就用 🍷；隨時可以喺清單撳個縮圖自己揀。</em>
+            </span>
+          </label>
+        </div>
+
+        <div style="margin-top:10px">
+          <button type="button" class="btn sm ghost" id="btnBulkPhoto">🔍 幫所有未有相片嘅記錄搵相</button>
         </div>
 
         <div id="ghFields" class="hidden">
@@ -1751,6 +1782,7 @@ $("#saveBtn").addEventListener("click", async () => {
     toast(STATE.editingId ? "✅ 已更新記錄" : "✅ 已儲存！乾杯 🍷");
     resetForm(true);
     if (DB.key !== "memory") switchView("list");
+    autoPhotoFor(rec);   // 背景自動上網搵酒標相片（唔會阻住儲存）
   } catch (err) {
     toast("儲存失敗：" + (err && err.message ? err.message : "未知錯誤"), 3200);
   }
@@ -1843,7 +1875,10 @@ function renderList() {
     const meta = [r.producer, r.vintage, r.region || r.country].filter(Boolean).map(esc).join(" · ");
     const quality = getPath(r, "conclusion.quality");
     return `<article class="entry" data-id="${esc(r.id)}">
-      <div class="thumb">${r.photo ? `<img src="${esc(r.photo)}" alt="">` : "🍷"}</div>
+      <div class="thumb" data-thumb="${esc(r.id)}" title="撳一下搵酒標相片">${
+        r.photo ? `<img src="${esc(r.photo)}" alt="酒標">`
+        : r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="酒標" referrerpolicy="no-referrer" loading="lazy" data-broken="1">`
+        : `<span class="ph">🍷</span><span class="find">🔍</span>`}</div>
       <div class="body">
         <div class="name">${sw ? `<span class="swatch" style="background:${sw}"></span>` : ""}${esc(r.name || "未命名")}</div>
         <div class="sub">${meta || "—"}</div>
@@ -1865,7 +1900,23 @@ function renderList() {
   }).join("");
 }
 
+$("#listBody").addEventListener("error", (e) => {
+  const img = e.target;
+  if (img && img.tagName === "IMG" && img.closest("[data-thumb]")) {
+    const box = img.closest("[data-thumb]");
+    const id = box.dataset.thumb;
+    const r = STATE.records.find((x) => x.id === id);
+    if (r && r.photoUrl) { delete r.photoUrl; delete r.photoCredit; }
+    box.innerHTML = `<span class="ph">🍷</span><span class="find">🔍</span>`;
+  }
+}, true);
 $("#listBody").addEventListener("click", async (e) => {
+  const th = e.target.closest("[data-thumb]");
+  if (th) {
+    const rr = STATE.records.find((r) => r.id === th.dataset.thumb);
+    if (rr) openPhotoPicker(rr);
+    return;
+  }
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const rec = STATE.records.find((r) => r.id === btn.dataset.id);
@@ -1884,6 +1935,234 @@ $("#listBody").addEventListener("click", async (e) => {
   const ev = sel === "#q" ? "input" : "change";
   el.addEventListener(ev, () => { STATE.filters[key] = el.value; renderList(); });
 });
+
+/* ---------------- 9b. 自動搵酒標相片（Wikimedia，免費、無需 API key） ---------------- */
+const IMG_CACHE_KEY = "wj.imgcache.v1";
+const IMG_CACHE = (() => { try { return JSON.parse(localStorage.getItem(IMG_CACHE_KEY) || "{}"); } catch (_) { return {}; } })();
+function imgCacheSave() { try { localStorage.setItem(IMG_CACHE_KEY, JSON.stringify(IMG_CACHE)); } catch (_) {} }
+function autoImgOn() { return localStorage.getItem("wj.autoimg") !== "0"; }
+
+function normStr(x) {
+  return String(x || "").toLowerCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+const STOP = ["the", "and", "de", "du", "des", "la", "le", "les", "chateau", "domaine", "wine", "bottle", "cru", "premier", "grand"];
+function qTokens(rec) {
+  return Array.from(new Set(normStr([rec.name, rec.producer].filter(Boolean).join(" ")).split(" ")
+    .filter((w) => w.length > 2 && STOP.indexOf(w) === -1)));
+}
+/** 判斷一張相片同支酒有幾夾 */
+function matchInfo(title, tokens) {
+  const t = normStr(title);
+  const key = tokens.filter((w) => w.length > 3);
+  const use = key.length ? key : tokens;
+  const matched = use.filter((w) => t.indexOf(w) !== -1);
+  const frac = use.length ? matched.length / use.length : 0;
+  const isScene = /vineyard|vigne|cellar|chai|barrel|winery|glass|tasting|landscape|vue|view|eglise|church|village|clocher/.test(t);
+  // 檔名有年份（例如 Chateau-Margaux 1947.JPG）通常係瓶身／酒標相
+  const isBottle = /bottle|label|bouteille|flasche|bottiglia|etiquette|magnum|jeroboam|mill[eé]sime/.test(t)
+    || (/\b(19|20)\d{2}\b/.test(t) && !isScene);
+  const isWineish = /vigne|vineyard|vin |vins |wine|clos|cru |aoc|appellation|domaine|cave|cellar|chai|raisin|hospice|bouteille|bottle|label|mill[eé]sime/.test(t);
+  const isJunk = /bank|gare|station|hotel de ville|town hall|mairie|vitrail|stained|statue|plaque|panneau|street|rue |avenue|parking|eglise|church|monument|bridge|pont |school|ecole|portrait|logo|coat of arms/.test(t);
+  let score = frac + (isBottle ? 0.6 : 0) + (isScene ? 0.05 : 0) + (isWineish ? 0.45 : 0);
+  score -= isJunk ? 0.6 : 0;
+  const need = Math.max(1, Math.ceil(use.length * 0.6));
+  return { ok: matched.length >= need, matched: matched.length, frac, isBottle, isScene, isWineish, isJunk, score };
+}
+
+let imgLastReq = 0;
+async function politeFetch(url) {
+  const gap = 1200 - (Date.now() - imgLastReq);
+  if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+  imgLastReq = Date.now();
+  return fetch(url, { mode: "cors" });
+}
+
+async function commonsImages(query, limit) {
+  const u = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*"
+    + "&generator=search&gsrnamespace=6&gsrlimit=" + (limit || 10)
+    + "&gsrsearch=" + encodeURIComponent(query)
+    + "&prop=imageinfo&iiprop=url&iiurlwidth=520";
+  const r = await politeFetch(u);
+  if (!r.ok) return [];
+  let d; try { d = await r.json(); } catch (_) { return []; }
+  const pages = (d.query && d.query.pages) || {};
+  return Object.keys(pages).map((k) => {
+    const p = pages[k], ii = (p.imageinfo || [])[0] || {};
+    return { url: ii.thumburl || ii.url, title: String(p.title || "").replace(/^File:/, ""), source: "Wikimedia Commons" };
+  }).filter((x) => x.url);
+}
+
+async function wikiPageImages(query, limit) {
+  const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*"
+    + "&generator=search&gsrlimit=" + (limit || 3)
+    + "&gsrsearch=" + encodeURIComponent(query)
+    + "&prop=pageimages&piprop=thumbnail&pithumbsize=520";
+  const r = await politeFetch(u);
+  if (!r.ok) return [];
+  let d; try { d = await r.json(); } catch (_) { return []; }
+  const pages = (d.query && d.query.pages) || {};
+  return Object.keys(pages).map((k) => {
+    const p = pages[k];
+    return { url: (p.thumbnail || {}).source, title: p.title, source: "Wikipedia" };
+  }).filter((x) => x.url);
+}
+
+/** 由酒名估產區／村莊名（Meursault 1er Cru Poruzots → Meursault） */
+function appellationGuess(rec) {
+  let n = String(rec.name || "").replace(/["'“”‘’]/g, " ")
+    .replace(/\b(1er|1ere|premier|premi[eè]re|grand)\s+cru\b/gi, " ")
+    .replace(/\b(cuv[eé]e|millesime|mill[eé]sime)\b.*$/gi, " ")
+    .trim();
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  let first = parts[0];
+  if (first.length < 4 && parts[1]) first = parts[0] + " " + parts[1];   // "Te Wāhi"
+  if (STOP.indexOf(normStr(first)) !== -1) return "";
+  return first.replace(/[",]/g, "");
+}
+
+/** 搵候選相片：只保留真係對得上名嘅，瓶身/酒標相排先 */
+async function findWineImages(rec, force) {
+  const name = rec.name || "", producer = rec.producer || "";
+  if (!name && !producer) return [];
+  const key = normStr(name + " " + producer);
+  if (!force && IMG_CACHE[key]) return IMG_CACHE[key];
+  const tokens = qTokens(rec);
+  if (!tokens.length) return [];
+  const base = [name, producer].filter(Boolean).join(" ").trim();
+  const seen = {}, all = [];
+  const push = (arr) => arr.forEach((x) => {
+    if (!x.url) return;
+    const u = x.url.split("?")[0];
+    if (seen[u]) return;
+    seen[u] = 1;
+    const m = matchInfo(x.title, tokens);
+    if (!m.ok) return;                                   // 唔對名 → 一律唔要
+    all.push(Object.assign({}, x, m));
+  });
+  try {
+    push(await commonsImages("filetype:bitmap " + base + " bottle", 10));
+    push(await commonsImages("filetype:bitmap " + base, 10));
+    if (all.length < 3) push(await commonsImages('filetype:bitmap "' + base + '"', 6));
+    if (!all.length) {
+      const w = await wikiPageImages(base, 3);
+      push(w.filter((x) => matchInfo(x.title, tokens).matched === tokens.length));
+    }
+    all.forEach((x) => { x.tier = 1; });
+    // 第二層：搵唔到酒標，就搵產區／村莊相（例如 Meursault、Savigny-lès-Beaune）
+    if (!all.some((x) => x.isBottle)) {
+      const ap = appellationGuess(rec);
+      if (ap) {
+        const apTok = normStr(ap).split(" ").filter(Boolean);
+        const got = await commonsImages("filetype:bitmap " + ap, 8);
+        got.forEach((x) => {
+          const m = matchInfo(x.title, apTok);
+          if (!m.ok || m.isJunk) return;
+          const u = x.url.split("?")[0];
+          if (seen[u]) return;
+          seen[u] = 1;
+          all.push(Object.assign({}, x, m, { tier: 2, isScene: true, score: m.score - 0.3, place: ap }));
+        });
+      }
+    }
+  } catch (err) { /* 離線就靜靜失敗，保留 🍷 */ }
+  all.sort((a, b) => (a.tier - b.tier) || (b.score - a.score));
+  const out = all.slice(0, 9);
+  IMG_CACHE[key] = out;
+  imgCacheSave();
+  return out;
+}
+
+/** 自動套用條件：一定要係瓶身／酒標相，或者全部關鍵字都中 */
+function autoPickOf(list) {
+  return list.find((x) => x.tier === 1 && x.isBottle)
+      || list.find((x) => x.tier === 1 && x.frac >= 0.99)
+      || list.find((x) => x.tier === 2)
+      || null;
+}
+
+async function setRecordPhoto(rec, url, credit) {
+  const target = STATE.records.find((x) => x.id === rec.id) || rec;
+  if (url) { target.photoUrl = url; target.photoCredit = credit || null; }
+  else { delete target.photoUrl; delete target.photoCredit; }
+  try { await DB.adapter.put(target); } catch (_) {}
+  renderList();
+  if (STATE.view === "stats") renderStats();
+}
+
+/** 儲存後自動補相 */
+async function autoPhotoFor(rec) {
+  if (!autoImgOn() || rec.photo || rec.photoUrl || !rec.name) return;
+  let list = [];
+  try { list = await findWineImages(rec); } catch (_) { return; }
+  const pick = autoPickOf(list);
+  if (!pick) return;                                     // 冇把握就唔亂放，留返 🍷 俾你揀
+  const t = STATE.records.find((x) => x.id === rec.id);
+  if (!t || t.photo || t.photoUrl) return;
+  await setRecordPhoto(t, pick.url, pick.title);
+  toast("🖼 已自動加入酒標相片（唔啱可以撳縮圖換）");
+}
+
+/** 相片選擇器 */
+async function openPhotoPicker(rec) {
+  const q = [rec.name, rec.producer].filter(Boolean).join(" ") || "wine";
+  $("#modalRoot").innerHTML = `<div class="modal" id="modal"><div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head"><div><h3>🖼 揀酒標相片</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(q)}</div></div>
+      <button class="x" id="modalClose" aria-label="關閉">✕</button></div>
+    <div class="dl" id="pickerBody"><div class="empty" style="padding:22px 0"><span class="big">🔍</span>正在上網搵相片…</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:10px">
+      <button class="btn sm ghost" id="pkClear">🗑 唔用相片（用 🍷）</button>
+      <button class="btn sm ghost" id="pkRetry">🔄 再搵一次</button>
+    </div>
+  </div></div>`;
+  const close = () => { $("#modalRoot").innerHTML = ""; };
+  $("#modalClose").addEventListener("click", close);
+  $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") close(); });
+  $("#pkClear").addEventListener("click", async () => { await setRecordPhoto(rec, null); close(); toast("已清除相片"); });
+
+  const body = $("#pickerBody");
+  const load = async (force) => {
+    body.innerHTML = `<div class="empty" style="padding:22px 0"><span class="big">🔍</span>正在上網搵相片…</div>`;
+    let list = [];
+    try { list = await findWineImages(rec, force); } catch (_) { list = []; }
+    if (!list.length) {
+      body.innerHTML = `<div class="empty" style="padding:18px 0"><span class="big">😕</span>搵唔到相片。<br>可以自己影酒標，用「記錄 → 酒標相片」上載。</div>`;
+      return;
+    }
+    body.innerHTML = `<div style="font-size:12.5px;color:var(--muted)">撳一下就用嗰張（Wikimedia Commons / Wikipedia，免費授權）。標籤：🍾 瓶身/酒標 · 📍 產區/酒莊</div>
+      <div class="photo-grid">${list.map((x, i) => `<button data-pick="${i}" title="${esc(x.title)}">
+        <img src="${esc(x.url)}" alt="" referrerpolicy="no-referrer" loading="lazy"></button>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.25;text-align:left">
+          ${x.tier === 2 ? "📍 產區 " + esc(x.place || "") : x.isBottle ? "🍾 酒標" : x.isScene ? "📍 酒莊" : "🖼 相片"}</div>`).join("")}</div>`;
+    body.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", async () => {
+      const pick = list[Number(b.dataset.pick)];
+      await setRecordPhoto(rec, pick.url, pick.title);
+      close(); toast("✅ 已套用酒標相片");
+    }));
+  };
+  $("#pkRetry").addEventListener("click", () => load(true));
+  load(false);
+}
+
+/** 一次過幫所有未有相片嘅記錄搵相 */
+async function bulkFindPhotos() {
+  const todo = STATE.records.filter((r) => !r.photo && !r.photoUrl);
+  if (!todo.length) { toast("所有記錄都已經有相片 ✅"); return; }
+  if (!confirm(`幫 ${todo.length} 支未有相片嘅酒上網搵相？\n（每支大約 2–4 秒）`)) return;
+  let n = 0;
+  for (let i = 0; i < todo.length; i++) {
+    toast(`🔍 搵相中… ${i + 1}/${todo.length}　${todo[i].name.slice(0, 18)}`, 2500);
+    try {
+      const pick = autoPickOf(await findWineImages(todo[i]));
+      if (pick) { await setRecordPhoto(todo[i], pick.url, pick.title); n++; }
+    } catch (_) {}
+  }
+  toast(`✅ 完成：${n}/${todo.length} 支加到相片（其餘搵唔到，可以逐支撳縮圖揀）`, 4000);
+}
 
 /* ---------------- 10. 詳情 modal ---------------- */
 function openDetail(rec) {
@@ -1908,7 +2187,12 @@ function openDetail(rec) {
         <button class="x" id="modalClose" aria-label="關閉">✕</button>
       </div>
       <div class="dl">
-        ${rec.photo ? `<img src="${esc(rec.photo)}" alt="酒標" style="width:100%;max-height:260px;object-fit:contain;border-radius:14px;border:1px solid var(--line);margin-bottom:16px;background:#1b1514">` : ""}
+        ${rec.photo
+          ? `<img src="${esc(rec.photo)}" alt="酒標" style="width:100%;max-height:260px;object-fit:contain;border-radius:14px;border:1px solid var(--line);margin-bottom:6px;background:#1b1514">`
+          : rec.photoUrl
+            ? `<img src="${esc(rec.photoUrl)}" alt="酒標" referrerpolicy="no-referrer" style="width:100%;max-height:260px;object-fit:contain;border-radius:14px;border:1px solid var(--line);margin-bottom:6px;background:#1b1514">
+               <div style="font-size:11px;color:var(--muted);margin-bottom:14px">🖼 圖片來源：${esc(rec.photoCredit || "Wikimedia")}</div>`
+            : ""}
         ${baseRows ? `<section><h4>資料 Info</h4><div class="rows">${baseRows}</div></section>` : ""}
         ${SAT_GROUPS.map((g) => {
           const extra = g.key === "nose" && aromas.length
@@ -1924,6 +2208,7 @@ function openDetail(rec) {
           </div></section>` : ""}
         <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px">
           <button class="btn sm" id="modalEdit">✎ 編輯</button>
+          <button class="btn sm ghost" id="modalPhoto">🖼 換酒標相片</button>
           <button class="btn sm ghost" id="modalPrint">🖨 列印 / 存 PDF</button>
         </div>
       </div>
@@ -1935,6 +2220,7 @@ function openDetail(rec) {
   $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") close(); });
   document.addEventListener("keydown", function onEsc(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); } });
   $("#modalEdit").addEventListener("click", () => { close(); fillForm(rec); });
+  $("#modalPhoto").addEventListener("click", () => { close(); openPhotoPicker(rec); });
   $("#modalPrint").addEventListener("click", () => window.print());
 }
 
@@ -2158,6 +2444,7 @@ async function reconnect() {
 }
 
 function renderSettings() {
+  const ai = $("#cfgAutoImg"); if (ai) ai.checked = autoImgOn();
   const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? "" : v; };
   set("#cfgMode", CFG.mode || "auto");
   set("#cfgToken", CFG.token);
@@ -2237,6 +2524,13 @@ async function readLocalRows() {
 }
 
 function wireSettings() {
+  const ai = $("#cfgAutoImg");
+  if (ai) ai.addEventListener("change", () => {
+    try { localStorage.setItem("wj.autoimg", ai.checked ? "1" : "0"); } catch (_) {}
+    toast(ai.checked ? "已開啟自動搵相片" : "已關閉自動搵相片");
+  });
+  const bp = $("#btnBulkPhoto");
+  if (bp) bp.addEventListener("click", bulkFindPhotos);
   $("#cfgMode").addEventListener("change", toggleCfgFields);
   $("#cfgTokenToggle").addEventListener("click", () => {
     const t = $("#cfgToken");
