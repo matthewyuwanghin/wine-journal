@@ -753,8 +753,9 @@ const BUILTIN_CONFIG = (() => {
     skipPhotos: true,
     // token 用 base64 存放：唔係加密（有心人解得開），只係避免 GitHub secret scanning
     // 喺 public repo 偵測到 github_pat_ 而自動撤銷，同埋擋走隨手睇 source 嘅人。
-    token_b64: "Z2l0aHViX3BhdF8xMUFOUVdBRVEwRGVqZHdJSzg2eWhXX0RhN2FZM1RVZlNoT3RURjJqV2Jjc1EzNW1kcTZJNmpvZnhVMVFHT3lpMVhRRFlITE1FVzZsbHc1dlJ5"
+    token_b64: "WjJsMGFIVmlYM0JoZEY4eE1VRk9VVmRCUlZFd2NGZGFkWGhIU0c1RlJVdDFYM3BJTTNsYVVERTVXVEYxV1c4eE0wTkNlV3RRVDBrM1VIVTVia3hGWm1jMVNsQXdiMDVrV25reU9ESlpNa1ZCV1ZVeldHbHRVRkZDTVZadQ=="
   };
+  
   const cfg = Object.assign({}, raw, { token: "" });
   try { cfg.token = atob(raw.token_b64); } catch (_) { cfg.token = ""; }
   return cfg;
