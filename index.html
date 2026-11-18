@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14100f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="品酒手帳">
 <meta name="description" content="WSET 系統品酒記錄器 — 用 Systemactic Approach to Tasting 記錄每一次飲過嘅酒。">
 <title>品酒手帳 · WSET Tasting Journal</title>
 <style>
@@ -284,6 +288,29 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 .dl .row .v{color:#fff;word-break:break-word}
 .dl .row .v .tag{margin:0 4px 4px 0}
 
+/* ============ Meta 表單輔助 ============ */
+.custom-input{margin-top:8px}
+.quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.qchip{
+  font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel-2);color:#cfc0ba;cursor:pointer;transition:.15s;
+}
+.qchip:hover,.qchip:active{border-color:var(--wine);color:#fff;background:rgba(179,18,62,.18)}
+.chips-grapes{max-height:none;overflow:visible}
+
+/* ============ Accordion ============ */
+.sg-head{
+  display:flex;align-items:center;gap:10px;width:100%;
+  background:transparent;border:0;color:#fff;cursor:pointer;
+  padding:0;text-align:left;font-family:inherit;
+}
+.sg-head .sg-title{font-size:14px;font-weight:600;letter-spacing:.2px}
+.sg-head .sg-note{flex:1;font-size:11.5px;color:var(--muted);font-weight:400;line-height:1.4}
+.sg-head .chev{margin-left:auto;color:var(--muted);font-size:13px;transition:transform .2s;flex:0 0 auto}
+.sg-head[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+.sg-body{margin-top:14px}
+.sg-body.hidden{display:none}
+
 /* ============ Toast ============ */
 #toast{
   position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translate(-50%,20px);
@@ -311,6 +338,78 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   .entry{grid-template-columns:auto minmax(0,1fr) auto}
   .entry .acts{flex-direction:column}
 }
+/* ============ Mobile（iPhone / Android）============ */
+@media (max-width:640px){
+  body{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+  .app{padding:0 12px}
+  .topbar{padding:10px 0 8px;gap:8px}
+  .brand b{font-size:16px}
+  .brand span{font-size:10px}
+  .brand .glyph{width:36px;height:36px;font-size:18px}
+  .pill{font-size:11px;padding:5px 9px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 單欄 + 大 tap target（16px 字級可避免 iOS 聚焦時自動放大） */
+  .grid{grid-template-columns:1fr;gap:12px}
+  input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{
+    font-size:16px;min-height:50px;padding:13px 12px;border-radius:12px;
+  }
+  select{padding-right:38px}
+  textarea{min-height:90px}
+  .field label{font-size:13.5px}
+  .field label em{font-size:10.5px}
+  .chip{padding:10px 13px;font-size:13.5px;min-height:42px;display:inline-flex;align-items:center}
+  .chips{max-height:230px;gap:8px}
+  .score-btn{min-width:calc(20% - 6px);padding:13px 0;font-size:14px}
+  .toggle{font-size:14px;padding:10px 0}
+  .toggle input{width:22px;height:22px}
+
+  .panel{border-radius:14px;margin-bottom:14px}
+  .panel-head{padding:13px 14px;gap:8px}
+  .panel-head h2{font-size:16px}
+  .panel-head .hint{font-size:12px;min-width:0;flex:1 1 100%}
+  .panel-body{padding:14px}
+  .subgroup{padding:13px;border-radius:12px}
+  .sg-head{gap:8px}
+  .sg-head .sg-note{display:none}
+  .sg-body{margin-top:12px}
+  .btn{padding:13px 16px;font-size:15px;min-height:48px}
+  .btn.sm{padding:10px 13px;font-size:13px;min-height:40px}
+
+  /* 表單底部「儲存」固定顯示，唔使捲到最底 */
+  .form-actions{
+    position:fixed;left:12px;right:12px;z-index:45;
+    bottom:calc(84px + env(safe-area-inset-bottom));
+    padding:10px;margin:0;border-radius:16px;
+    background:rgba(26,20,19,.96);backdrop-filter:blur(14px);
+    border:1px solid var(--line);box-shadow:0 -10px 26px rgba(0,0,0,.5);
+    flex-wrap:nowrap;gap:8px;
+  }
+  .form-actions .hint,#editingHint,.form-actions .spacer,#demoBtn{display:none}
+  #saveBtn{flex:1;font-size:15px}
+  .form-actions .btn.ghost{flex:0 0 auto;padding:13px 14px}
+  #view-add{padding-bottom:86px}
+
+  /* 列表 */
+  .entry{padding:12px;gap:10px}
+  .entry .name{font-size:15.5px}
+  .entry .acts{gap:8px}
+  .entry .acts .btn{flex:1;justify-content:center;min-height:42px}
+  .toolbar{padding:12px 14px;gap:8px}
+  .kpi .v{font-size:22px}
+  .bar-row{grid-template-columns:minmax(0,90px) minmax(0,1fr) 28px;font-size:12px}
+
+  /* 設定頁按鈕排成 2 欄 */
+  .form-actions .btn{white-space:nowrap}
+  #view-settings .form-actions{position:static;background:transparent;border:0;box-shadow:none;padding:0;flex-wrap:wrap;margin:18px 0 0}
+  #view-settings .form-actions .btn{flex:1 1 45%;justify-content:center}
+  #view-settings{padding-bottom:0}
+  #view-stats .two-col{display:block}
+}
+@media (max-width:380px){
+  .tabbar button{font-size:10.5px;padding:7px 4px}
+  .tabbar button .ic{font-size:16px}
+}
+
 @media print{
   body{background:#fff;color:#000;padding:0}
   .topbar,.tabbar,.form-actions,.toolbar,.entry .acts,#toast,.banner{display:none !important}
@@ -369,6 +468,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
         <span class="num">WSET SAT</span>
         <h2>Systematic Approach to Tasting</h2>
         <span class="hint">Level 3 標準詞彙 · 全部用 dropdown / chip 揀，唔使自己打字</span>
+        <button class="btn sm ghost" id="accToggle" type="button">收起全部</button>
       </div>
       <div class="panel-body" id="satBody"></div>
       <div class="form-actions">
@@ -667,22 +767,61 @@ const SAT_GROUPS = [
   }
 ];
 
+const VINTAGES = ["NV"].concat(Array.from({ length: 47 }, (_, i) => String(2026 - i)));
+const ABVS = ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5",
+  "12", "12.5", "13", "13.5", "14", "14.5", "15", "15.5", "16", "16.5", "17", "18", "19", "20", "35", "40", "43", "46", "50", "55", "60"];
+const PLACES = ["家 Home", "餐廳 Restaurant", "酒吧 Wine bar", "品酒會 Tasting", "朋友家 Friend's place",
+  "酒莊 / 酒窖 Winery", "自帶 BYO", "旅行 Travel", "商店試飲 Shop tasting"];
+const GLASSES = ["標準品酒杯 ISO", "Bordeaux 杯", "Burgundy 杯", "白酒杯", "香檳杯", "甜酒杯", "其他"];
+const TEMPS = ["冰凍 6–8°C", "凍 8–10°C", "輕微冷藏 10–13°C", "室溫 16–18°C", "略暖 18–20°C"];
+const DECANTS = ["無 None", "15 分鐘", "30 分鐘", "1 小時", "2 小時以上"];
+
+const GRAPES_COMMON = [
+  "Cabernet Sauvignon", "Merlot", "Cabernet Franc", "Pinot Noir", "Syrah / Shiraz", "Grenache",
+  "Tempranillo", "Sangiovese", "Nebbiolo", "Malbec", "Zinfandel", "Petit Verdot", "Mourvèdre",
+  "Gamay", "Barbera", "Primitivo", "Pinotage", "Carmenère",
+  "Chardonnay", "Sauvignon Blanc", "Riesling", "Sémillon", "Chenin Blanc", "Gewürztraminer",
+  "Pinot Gris / Grigio", "Viognier", "Muscat", "Albariño", "Grüner Veltliner", "Glera",
+  "Melon de Bourgogne", "Palomino", "Furmint", "Assyrtiko", "Verdejo", "Silvaner"
+];
+
+const REGIONS = {
+  "France 法國": ["Bordeaux · Médoc", "Bordeaux · Margaux", "Bordeaux · Pauillac", "Bordeaux · Saint-Émilion", "Bordeaux · Pessac-Léognan",
+    "Burgundy · Côte de Nuits", "Burgundy · Côte de Beaune", "Burgundy · Chablis", "Champagne", "Loire Valley", "Alsace",
+    "Rhône · Northern", "Rhône · Southern", "Languedoc-Roussillon", "Provence", "Jura", "Savoie", "Beaujolais"],
+  "Italy 意大利": ["Piedmont / Barolo", "Piedmont / Barbaresco", "Tuscany / Chianti", "Tuscany / Brunello", "Tuscany / Bolgheri",
+    "Veneto / Valpolicella", "Veneto / Prosecco", "Friuli", "Alto Adige", "Sicily", "Campania", "Puglia", "Lombardy"],
+  "Spain 西班牙": ["Rioja", "Ribera del Duero", "Priorat", "Rías Baixas", "Jerez / Sherry", "Cava", "Penedès", "Toro", "Bierzo"],
+  "Portugal 葡萄牙": ["Douro", "Port", "Vinho Verde", "Dão", "Alentejo", "Madeira", "Setúbal"],
+  "Germany 德國": ["Mosel", "Rheingau", "Rheinhessen", "Pfalz", "Baden", "Nahe", "Franken"],
+  "Austria 奧地利": ["Wachau", "Kamptal", "Kremstal", "Burgenland", "Styria"],
+  "USA 美國": ["Napa Valley", "Sonoma", "Central Coast", "Willamette Valley", "Washington / Columbia Valley", "Finger Lakes", "Santa Barbara"],
+  "Australia 澳洲": ["Barossa Valley", "McLaren Vale", "Coonawarra", "Margaret River", "Yarra Valley", "Hunter Valley", "Tasmania", "Clare Valley"],
+  "New Zealand 紐西蘭": ["Marlborough", "Central Otago", "Hawke's Bay", "Martinborough", "Nelson"],
+  "Chile 智利": ["Maipo", "Colchagua", "Casablanca", "Central Valley", "Bio Bio"],
+  "Argentina 阿根廷": ["Mendoza", "Salta", "Patagonia", "San Juan"],
+  "South Africa 南非": ["Stellenbosch", "Franschhoek", "Swartland", "Constantia", "Walker Bay"],
+  "China 中國": ["Ningxia 寧夏", "Yunnan 雲南", "Shandong 山東", "Hebei 河北", "Xinjiang 新疆"],
+  "Japan 日本": ["Yamanashi 山梨", "Nagano 長野", "Hokkaido 北海道"],
+  "__default": ["其他產區 Others"]
+};
+
 const META_FIELDS = [
-  { k: "name", t: "酒名 Name", req: true, ph: "e.g. Château Margaux", wide: false },
-  { k: "producer", t: "酒莊 Producer", ph: "e.g. Château Margaux" },
-  { k: "vintage", t: "年份 Vintage", ph: "2015 / NV" },
-  { k: "category", t: "類型 Type", opts: CATEGORIES },
-  { k: "country", t: "國家 Country", datalist: COUNTRIES, ph: "France 法國" },
-  { k: "region", t: "產區 Region / Appellation", ph: "Bordeaux · Margaux" },
-  { k: "grapes", t: "葡萄品種 Grapes", ph: "Cabernet Sauvignon, Merlot" },
-  { k: "abv", t: "酒精度 ABV %", type: "number", ph: "13.5", step: "0.1" },
-  { k: "price", t: "價錢 Price", type: "number", ph: "680", step: "1" },
-  { k: "currency", t: "貨幣 Currency", opts: [["HKD","HKD 港幣"],["USD","USD"],["EUR","EUR"],["GBP","GBP"],["JPY","JPY"],["CNY","CNY"],["AUD","AUD"]] },
-  { k: "date", t: "飲用日期 Date tasted", type: "date" },
-  { k: "place", t: "地點 Place", ph: "Home / Restaurant / Wine bar / 品酒會" },
-  { k: "glass", t: "酒杯 Glassware", opts: ["標準品酒杯 ISO", "Bordeaux 杯", "Burgundy 杯", "白酒杯", "香檳杯", "甜酒杯", "其他"] },
-  { k: "temp", t: "飲用溫度 Serving temp", opts: ["冰凍 6–8°C", "凍 8–10°C", "輕微冷藏 10–13°C", "室溫 16–18°C", "略暖 18–20°C"] },
-  { k: "decant", t: "醒酒 Decant", opts: ["無 None", "15 分鐘", "30 分鐘", "1 小時", "2 小時以上"] }
+  { k: "name", t: "酒名 Name", kind: "text", req: true, ph: "e.g. Château Margaux", wide: true },
+  { k: "producer", t: "酒莊 Producer", kind: "text", ph: "e.g. Château Margaux", wide: true },
+  { k: "vintage", t: "年份 Vintage", kind: "select", opts: VINTAGES },
+  { k: "category", t: "類型 Type", kind: "select", opts: CATEGORIES },
+  { k: "country", t: "國家 Country", kind: "select", opts: COUNTRIES, allowCustom: "其他（自行輸入）" },
+  { k: "region", t: "產區 Region", kind: "select", opts: [], region: true, allowCustom: "其他（自行輸入）" },
+  { k: "grapes", t: "葡萄品種 Grapes", kind: "chips", chips: GRAPES_COMMON, allowCustom: true },
+  { k: "abv", t: "酒精度 ABV %", kind: "select", opts: ABVS, allowCustom: "其他（自行輸入）" },
+  { k: "price", t: "價錢 Price", kind: "number", ph: "680", quick: [100, 200, 300, 500, 800, 1200, 2000, 3000] },
+  { k: "currency", t: "貨幣 Currency", kind: "select", opts: [["HKD", "HKD 港幣"], ["USD", "USD"], ["EUR", "EUR"], ["GBP", "GBP"], ["JPY", "JPY"], ["CNY", "CNY"], ["AUD", "AUD"]] },
+  { k: "date", t: "飲用日期 Date tasted", kind: "date" },
+  { k: "place", t: "地點 Place", kind: "select", opts: PLACES, allowCustom: "其他（自行輸入）" },
+  { k: "glass", t: "酒杯 Glassware", kind: "select", opts: GLASSES },
+  { k: "temp", t: "飲用溫度 Serving temp", kind: "select", opts: TEMPS },
+  { k: "decant", t: "醒酒 Decant", kind: "select", opts: DECANTS }
 ];
 
 /* ---------------- 2. 儲存層：server → IndexedDB → memory ---------------- */
@@ -1154,7 +1293,8 @@ async function resolveStore() {
     if (!j || !j.ok) throw new Error("代理未設定好" + (j && j.error ? "：" + j.error : ""));
     let host = "Worker";
     try { host = new URL(CFG.proxyUrl).host; } catch (_) {}
-    serverAdapter.label = "Cloudflare Worker · " + host + (j.count != null ? "（" + j.count + " 筆）" : "");
+    serverAdapter.label = "Cloudflare Worker" + (j.count != null ? "（" + j.count + " 筆）" : "");
+    serverAdapter.host = host;
     await serverAdapter.init();
     return serverAdapter;
   }
@@ -1197,37 +1337,177 @@ function toast(msg, ms = 2200) {
 }
 
 /* ---------------- 4. 建立表單 ---------------- */
+function regionsFor(country) {
+  return (REGIONS[country] || REGIONS["__default"] || []);
+}
+
+function metaControlHTML(f) {
+  const id = "f_" + f.k;
+  const cid = "fc_" + f.k;
+  const customLabel = typeof f.allowCustom === "string" ? f.allowCustom : "其他（自行輸入）";
+  const customOpt = f.allowCustom && f.kind === "select" ? `<option value="__custom__">${esc(customLabel)}</option>` : "";
+
+  if (f.kind === "text") {
+    return `<input id="${id}" data-path="${f.k}" type="text" placeholder="${esc(f.ph || "")}" autocomplete="off">`;
+  }
+  if (f.kind === "number") {
+    let html = `<input id="${id}" data-path="${f.k}" type="number" inputmode="decimal" step="any" placeholder="${esc(f.ph || "")}">`;
+    if (f.quick) html += `<div class="quick">${f.quick.map((v) => `<button type="button" class="qchip" data-quick="${f.k}" data-val="${v}">$${v}</button>`).join("")}</div>`;
+    return html;
+  }
+  if (f.kind === "date") return `<input id="${id}" data-path="${f.k}" type="date">`;
+  if (f.kind === "chips") {
+    return `<div class="chips chips-grapes" data-gchips="${f.k}">
+        ${(f.chips || []).map((v) => `<button type="button" class="chip" data-gchip="${f.k}" data-val="${esc(v)}" aria-pressed="false">${esc(v)}</button>`).join("")}
+      </div>
+      <input id="${cid}" class="custom-input" data-meta-custom="${f.k}" type="text" placeholder="其他葡萄（可用逗號分隔）" autocomplete="off">`;
+  }
+  // select
+  const opts = (f.opts || []).map((o) => Array.isArray(o)
+    ? `<option value="${esc(o[0])}">${esc(o[1])}</option>`
+    : `<option value="${esc(o)}">${esc(o)}</option>`).join("");
+  let html = `<select id="${id}" data-path="${f.k}" ${f.region ? 'data-region="1"' : ""}><option value="">— 未填 —</option>${opts}${customOpt}</select>`;
+  if (f.allowCustom) html += `<input id="${cid}" class="custom-input hidden" data-meta-custom="${f.k}" type="text" placeholder="自行輸入…" autocomplete="off">`;
+  return html;
+}
+
 function buildMeta() {
   const grid = $("#metaGrid");
-  grid.innerHTML = META_FIELDS.map((f) => {
-    const id = "f_" + f.k;
-    let ctrl;
-    if (f.opts) {
-      const opts = f.opts.map((o) => Array.isArray(o) ? `<option value="${esc(o[0])}">${esc(o[1])}</option>` : `<option value="${esc(o)}">${esc(o)}</option>`).join("");
-      ctrl = `<select id="${id}" data-path="${f.k}"><option value="">— 未填 —</option>${opts}</select>`;
-    } else if (f.datalist) {
-      ctrl = `<input id="${id}" data-path="${f.k}" type="text" list="dl_${f.k}" placeholder="${esc(f.ph || "")}" autocomplete="off">
-              <datalist id="dl_${f.k}">${f.datalist.map((c) => `<option value="${esc(c)}">`).join("")}</datalist>`;
-    } else {
-      ctrl = `<input id="${id}" data-path="${f.k}" type="${f.type || "text"}" ${f.step ? `step="${f.step}"` : ""} placeholder="${esc(f.ph || "")}" autocomplete="off">`;
-    }
-    return `<div class="field${f.wide ? " wide" : ""}">
-      <label for="${id}">${esc(f.t)}${f.req ? ' <em>必填</em>' : ""}</label>${ctrl}</div>`;
-  }).join("");
-  // 預設日期
+  grid.innerHTML = META_FIELDS.map((f) => `<div class="field${f.wide || f.kind === "chips" ? " wide" : ""}">
+      <label for="f_${f.k}">${esc(f.t)}${f.req ? " <em>必填</em>" : ""}</label>
+      ${metaControlHTML(f)}
+    </div>`).join("");
+  rebuildRegionOptions();
   const d = $("#f_date"); if (d && !d.value) d.value = todayISO();
+  const c = $("#f_currency"); if (c && !c.value) c.value = "HKD";
+}
+
+function rebuildRegionOptions() {
+  const sel = $("#f_region"); if (!sel) return;
+  const countryEl = $("#f_country");
+  const country = countryEl ? countryEl.value : "";
+  const prev = sel.value;
+  const list = regionsFor(country);
+  sel.innerHTML = `<option value="">— 未填 —</option>` +
+    list.map((r) => `<option value="${esc(r)}">${esc(r)}</option>`).join("") +
+    `<option value="__custom__">其他（自行輸入）</option>`;
+  if (prev && Array.from(sel.options).some((o) => o.value === prev)) sel.value = prev;
+  else if (prev === "__custom__") sel.value = "__custom__";
+}
+
+function toggleCustomInput(k) {
+  const sel = document.getElementById("f_" + k);
+  const cust = document.getElementById("fc_" + k);
+  if (!sel || !cust || sel.tagName !== "SELECT") return;
+  const isCustom = sel.value === "__custom__";
+  cust.classList.toggle("hidden", !isCustom);
+  if (isCustom) { cust.focus(); }
+}
+
+function metaValue(f) {
+  if (f.kind === "chips") {
+    const picked = $$(`[data-gchip="${f.k}"][aria-pressed="true"]`).map((b) => b.dataset.val);
+    const cust = document.getElementById("fc_" + f.k);
+    const extra = (cust ? cust.value : "").split(/[,，;；]/).map((x) => x.trim()).filter(Boolean);
+    return Array.from(new Set(picked.concat(extra))).join(", ");
+  }
+  const el = document.getElementById("f_" + f.k);
+  if (!el) return "";
+  let v = (el.value || "").trim();
+  if (v === "__custom__") {
+    const cust = document.getElementById("fc_" + f.k);
+    v = cust ? (cust.value || "").trim() : "";
+  }
+  return v;
+}
+
+function setMetaValue(f, val) {
+  if (f.kind === "chips") {
+    const parts = String(val == null ? "" : val).split(/[,，;；、]/).map((x) => x.trim()).filter(Boolean);
+    // 大小寫唔敏感：舊資料 "cabernet sauvignon" 都對得返個 chip
+    const known = new Map((f.chips || []).map((c) => [c.toLowerCase(), c]));
+    const picked = [], others = [];
+    parts.forEach((p) => {
+      const hit = known.get(p.toLowerCase());
+      if (hit) picked.push(hit); else others.push(p);
+    });
+    $$(`[data-gchip="${f.k}"]`).forEach((b) => b.setAttribute("aria-pressed", picked.indexOf(b.dataset.val) > -1 ? "true" : "false"));
+    const cust = document.getElementById("fc_" + f.k);
+    if (cust) cust.value = others.join(", ");
+    return;
+  }
+  const el = document.getElementById("f_" + f.k);
+  if (!el) return;
+  if (val == null || val === "") { el.value = ""; return; }
+  if (el.tagName === "SELECT") {
+    const has = Array.from(el.options).some((o) => o.value === String(val));
+    if (has) { el.value = String(val); }
+    else {
+      const hasCustom = Array.from(el.options).some((o) => o.value === "__custom__");
+      if (hasCustom) {
+        el.value = "__custom__";
+        const cust = document.getElementById("fc_" + f.k);
+        if (cust) { cust.value = String(val); cust.classList.remove("hidden"); }
+      }
+    }
+  } else {
+    el.value = val;
+  }
 }
 
 function buildSAT() {
   const body = $("#satBody");
   body.innerHTML = SAT_GROUPS.map((g, gi) => `
-    <div class="subgroup">
-      <h3><span class="idx">${gi + 1}</span>${esc(g.zh)} ${esc(g.en)}
-        <span style="font-size:11.5px;color:var(--muted);font-weight:400;margin-left:auto">${esc(g.note)}</span></h3>
-      <div class="grid">
-        ${g.fields.map((f) => fieldHTML(g.key, f)).join("")}
+    <div class="subgroup" data-acc>
+      <button type="button" class="sg-head" aria-expanded="true">
+        <span class="idx">${gi + 1}</span>
+        <span class="sg-title">${esc(g.zh)} ${esc(g.en)}</span>
+        <span class="sg-note">${esc(g.note)}</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="sg-body">
+        <div class="grid">
+          ${g.fields.map((f) => fieldHTML(g.key, f)).join("")}
+        </div>
       </div>
     </div>`).join("") + scoreHTML() + extrasHTML();
+  // 手機預設收起，減少無限滾動
+  const isPhone = window.matchMedia("(max-width: 640px)").matches;
+  setAccordion(!isPhone);
+}
+
+function setAccordion(open) {
+  $$("[data-acc]").forEach((g) => {
+    const head = g.querySelector(".sg-head"), b = g.querySelector(".sg-body");
+    if (head) head.setAttribute("aria-expanded", open ? "true" : "false");
+    if (b) b.classList.toggle("hidden", !open);
+  });
+  const btn = $("#accToggle");
+  if (btn) btn.textContent = open ? "收起全部" : "展開全部";
+}
+
+function wireMetaEvents() {
+  const grid = $("#metaGrid");
+  grid.addEventListener("change", (e) => {
+    const sel = e.target.closest("select[data-path]");
+    if (!sel) return;
+    const k = sel.dataset.path;
+    const f = META_FIELDS.find((x) => x.k === k);
+    if (f && f.allowCustom) toggleCustomInput(k);
+    if (k === "country") { rebuildRegionOptions(); toggleCustomInput("region"); }
+  });
+  grid.addEventListener("click", (e) => {
+    const g = e.target.closest("[data-gchip]");
+    if (g) { g.setAttribute("aria-pressed", g.getAttribute("aria-pressed") === "true" ? "false" : "true"); return; }
+    const q = e.target.closest("[data-quick]");
+    if (q) {
+      const el = document.getElementById("f_" + q.dataset.quick);
+      if (el) { el.value = q.dataset.val; el.focus(); }
+    }
+  });
+  grid.addEventListener("input", (e) => {
+    if (e.target.closest("[data-meta-custom]")) return; // 自由輸入唔需要特別處理
+  });
 }
 
 function fieldHTML(groupKey, f) {
@@ -1305,11 +1585,9 @@ function collectForm() {
   }
   if (!rec.createdAt) rec.createdAt = rec.updatedAt;
 
-  // 基本資料
+  // 基本資料（全部用 metaValue 讀，支援「其他（自行輸入）」同葡萄 chips）
   META_FIELDS.forEach((f) => {
-    const el = document.getElementById("f_" + f.k);
-    if (!el) return;
-    const v = (el.value || "").trim();
+    const v = metaValue(f);
     if (v) rec[f.k] = v;
   });
   if (!rec.category) rec.category = "other";
@@ -1346,8 +1624,10 @@ function fillForm(rec) {
   if (!rec) return;
   STATE.editingId = rec.id;
   META_FIELDS.forEach((f) => {
-    const el = document.getElementById("f_" + f.k);
-    if (el && rec[f.k] != null) el.value = rec[f.k];
+    if (f.region) { const c = $("#f_country"); if (c) c.value = rec.country || ""; rebuildRegionOptions(); }
+    setMetaValue(f, rec[f.k]);
+    if (f.k === "country") rebuildRegionOptions();
+    if (f.allowCustom) toggleCustomInput(f.k);
   });
   SAT_GROUPS.forEach((g) => g.fields.forEach((f) => {
     if (f.chips) return;
@@ -1372,6 +1652,9 @@ function fillForm(rec) {
 function resetForm(silent) {
   STATE.editingId = null; STATE.photo = null;
   $$("[data-path]").forEach((el) => { el.value = ""; });
+  $$("[data-meta-custom]").forEach((el) => { el.value = ""; el.classList.add("hidden"); });
+  $$("[data-gchip]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  rebuildRegionOptions();
   $$("[data-chip]").forEach((b) => b.setAttribute("aria-pressed", "false"));
   $$(".score-btn").forEach((b) => b.setAttribute("aria-pressed", "false"));
   $("#wouldBuy").checked = false; $("#isBlind").checked = false;
@@ -2032,9 +2315,23 @@ async function refresh() {
 async function boot() {
   buildMeta();
   buildSAT();
+  wireMetaEvents();
+  const accBtn = $("#accToggle");
+  if (accBtn) accBtn.addEventListener("click", () => {
+    const anyOpen = $$("[data-acc]").some((g) => g.querySelector(".sg-head").getAttribute("aria-expanded") === "true");
+    setAccordion(!anyOpen);
+  });
 
   // chips / score 事件（委派）
   document.addEventListener("click", (e) => {
+    const accHead = e.target.closest(".sg-head");
+    if (accHead) {
+      const open = accHead.getAttribute("aria-expanded") === "true";
+      accHead.setAttribute("aria-expanded", open ? "false" : "true");
+      const b = accHead.parentElement.querySelector(".sg-body");
+      if (b) b.classList.toggle("hidden", open);
+      return;
+    }
     const chip = e.target.closest("[data-chip]");
     if (chip) {
       chip.setAttribute("aria-pressed", chip.getAttribute("aria-pressed") === "true" ? "false" : "true");

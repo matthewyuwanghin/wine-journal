@@ -447,6 +447,11 @@ GitHub secret scanning **會先 decode base64 再比對**，所以：
 
 瀏覽器**永遠唔會接觸 GitHub token**，token 只存在 Cloudflare 嘅加密環境變數。就算有人 view-source 都攞唔到任何鎖匙。
 
+> 📌 **本版本已預設好**：`index.html` 嘅 `BUILTIN_CONFIG` 已經填好
+> `mode: "proxy"` + `proxyUrl: "https://wine-journal-proxy.matthew-wanghin.workers.dev"`，
+> 所以 Worker 一部署好，**所有裝置一開網站就自動連上，唔需要任何設定**。
+> 要換網址就改呢一行再上載。
+
 ## 部署步驟（全程瀏覽器）
 
 1. https://dash.cloudflare.com 註冊 → **Workers & Pages**
@@ -476,6 +481,27 @@ GitHub secret scanning **會先 decode base64 再比對**，所以：
 ## 免費額度
 
 100,000 請求／日、10ms CPU／次；超額只會報錯，**唔會扣錢**。
+
+---
+
+---
+
+# 📱 手機使用貼士（iPhone / Android）
+
+1. **加到主畫面**（變成 App）：
+   - iPhone Safari → 分享掣 → **加入主畫面**
+   - Android Chrome → ⋮ → **加到主螢幕**
+   之後開就係全螢幕，冇網址欄。
+2. **輸入表單**：
+   - 除「酒名」「酒莊」外，全部撳 dropdown 揀，唔使打字
+   - 每個 dropdown 最底有「**其他（自行輸入）**」，揀咗會出現輸入格
+   - 產區會跟住「國家」自動變（揀 France → Bordeaux / Burgundy…）
+   - 葡萄可撳多個 chip（36 個品種），唔喺名單就填落「其他葡萄」
+   - 價錢有 `$$100 / $200 / $500…` 快選掣，撳一下即填
+3. **WSET 段落會自動收起**（外觀／香氣／口感／結論），撳標題就展開，唔使捲幾十行；
+   右上「展開全部 / 收起全部」可以一次過開關。
+4. **儲存掣固定在螢幕底部**，填到邊都撳得到。
+5. 儲存後會自動同步（Cloudflare Worker → GitHub），喺另一部機開同一個網址即見到。
 
 ---
 
