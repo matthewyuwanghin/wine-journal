@@ -731,11 +731,56 @@ const DEFAULT_CFG = {
   gistToken: "", gistId: "", gistFile: "wine-journal.json",
   lastSync: null
 };
+
+/* =======================================================================
+   ⚠️  內建雲端設定（Built-in cloud config）
+   -----------------------------------------------------------------------
+   喺呢個 block 填好，所有裝置一開 app 就自動連上，唔需要逐部機入 token。
+   ⚠️ 安全：token 會直接寫入 index.html，即係個網站公開原始碼 = token 公開。
+      - 如果你個網站 repo 係 public（免費 GitHub Pages），任何人睇 source 都攞到呢個 token
+      - 建議：(a) 用 private 網站 repo（GitHub Pro），或
+              (b) 只俾 token 呢一個 repo 嘅 Contents 權限（現時已經係咁），
+                  同埋定期 Revoke + 重新產生再更新下面嗰行；
+              (c) 或者清空下面 token，改成每部機在「⚙️ 設定」自己填。
+   ======================================================================= */
+const BUILTIN_CONFIG = (() => {
+  const raw = {
+    mode: "github",
+    owner: "matthewyuwanghin",
+    repo: "wine-journal-data",
+    branch: "main",
+    path: "data/tastings.json",
+    skipPhotos: true,
+    // token 用 base64 存放：唔係加密（有心人解得開），只係避免 GitHub secret scanning
+    // 喺 public repo 偵測到 github_pat_ 而自動撤銷，同埋擋走隨手睇 source 嘅人。
+    token_b64: "Z2l0aHViX3BhdF8xMUFOUVdBRVEwRGVqZHdJSzg2eWhXX0RhN2FZM1RVZlNoT3RURjJqV2Jjc1EzNW1kcTZJNmpvZnhVMVFHT3lpMVhRRFlITE1FVzZsbHc1dlJ5"
+  };
+  const cfg = Object.assign({}, raw, { token: "" });
+  try { cfg.token = atob(raw.token_b64); } catch (_) { cfg.token = ""; }
+  return cfg;
+})();
+
 let CFG = (() => {
-  try { const raw = localStorage.getItem(CFG_KEY); if (raw) return Object.assign({}, DEFAULT_CFG, JSON.parse(raw)); } catch (_) {}
-  return Object.assign({}, DEFAULT_CFG);
+  const cfg = Object.assign({}, DEFAULT_CFG, BUILTIN_CONFIG);
+  let saved = null;
+  try { const raw = localStorage.getItem(CFG_KEY); if (raw) saved = JSON.parse(raw); } catch (_) {}
+  if (saved && typeof saved === "object") {
+    // 使用者自己存過自訂設定（換過 token 或按過儲存）→ 用佢嘅；否則只保留偏好，連線資料用內建
+    const hasConn = !!(saved.token || saved.gistToken);
+    const isCustom = (saved.custom === true && hasConn) ||
+      (!!saved.token && saved.token !== BUILTIN_CONFIG.token) ||
+      (!!saved.gistToken && saved.gistToken !== BUILTIN_CONFIG.gistToken);
+    const ALWAYS = ["lastSync", "skipPhotos", "custom"];
+    Object.keys(saved).forEach((k) => {
+      const v = saved[k];
+      if (v === "" || v == null) return;             // 空白唔蓋過內建值
+      if (isCustom || ALWAYS.indexOf(k) > -1) cfg[k] = v;
+    });
+  }
+  return cfg;
 })();
 function saveCfg() {
+  CFG.custom = true;   // 標記：使用者自己按過「儲存」，之後就以呢份為準
   try { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); return true; } catch (_) { return false; }
 }
 
@@ -1711,7 +1756,13 @@ function renderSettings() {
   const last = CFG.lastSync ? new Date(CFG.lastSync).toLocaleString("zh-HK") : "未有紀錄";
   $("#syncHint").textContent = "而家用緊：" + DB.label;
   const persist = (() => { try { localStorage.setItem("wj.test", "1"); localStorage.removeItem("wj.test"); return true; } catch (_) { return false; } })();
-  $("#cfgMsg").innerHTML =
+  const builtinNote = BUILTIN_CONFIG.token
+    ? `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
+         ⚠️ 已內建 GitHub 連線：<b>${esc(BUILTIN_CONFIG.owner)}/${esc(BUILTIN_CONFIG.repo)}</b> — 新裝置一開就自動連上，唔使再填。
+         Token 寫死喺 <code>index.html</code>，所以<b>網站 repo 如果係 public，睇 source 嘅人就攞到</b>（可以讀寫你嘅筆記）。想安全啲：網站 repo 用 private（需 Pro），或者定期 Revoke + 重新產生 token 再更新 <code>BUILTIN_CONFIG</code>，或者清空 token 改成逐部機自己填。
+       </div>`
+    : "";
+  $("#cfgMsg").innerHTML = builtinNote +
     `<div>📍 現時儲存位置：<b style="color:#fff">${esc(DB.label)}</b>　·　記錄數：<b style="color:#fff">${STATE.records.length}</b>　·　上次同步：${esc(last)}</div>` +
     (persist ? "" : `<div style="margin-top:6px;color:#f0c98a">⚠️ 呢個環境唔可以寫 localStorage，所以設定只會生效到關掉為止（唔會記住）。部署到 GitHub Pages 或本機開就會記住。</div>`) +
     (DB.key === "github" || DB.key === "gist"

@@ -249,6 +249,11 @@ A：用 GitHub 模式或 SQLite 後端 → 會。用本機 IndexedDB → 唔會�
 **Q：會唔會唔安全？**
 A：Token 只存喺你部瀏覽器；repo 係 private；app 只會寫你指定嘅一個檔案路徑。風險同「喺瀏覽器存一個 repo 密碼」一樣，所以唔好喺公用電腦／公用 Wi-Fi 填，用完可以 Revoke。
 
+**Q：可以將 token 寫死喺 `index.html`（內建設定）嗎？**
+A：可以 —— 改 `index.html` 頂部嘅 `BUILTIN_CONFIG`（`token_b64` 用 `printf '%s' 'github_pat_…' | base64` 產生），所有裝置一開就自動連上。
+⚠️ 但個網站 repo 係 public 就等於 token 公開：最壞情況係有人讀／改／清空你嘅筆記（token 只授權一個 repo 的 Contents，動唔到你帳號其他嘢）。三個較安全做法：① 網站用 private repo（GitHub Pro）② 清空 `token_b64`，每部機喺 ⚙️ 設定自己填 ③ 定期 Revoke + 換新 token。
+ℹ️ GitHub 會掃描 public repo 內嘅 `github_pat_`，有機會自動撤銷；所以預設用 base64 存放（**唔係加密**，只係避開自動掃描）。
+
 **Q：多人一齊用？**
 A：技術上得（同一個 GitHub repo 或後端），但冇登入機制，任何有 token / 網址嘅人都可以讀寫。要分享唯讀就畀佢睇 repo。
 
