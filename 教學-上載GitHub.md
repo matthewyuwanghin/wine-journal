@@ -437,6 +437,48 @@ GitHub secret scanning **會先 decode base64 再比對**，所以：
 
 ---
 
+---
+
+# ☁️ 進階：用 Cloudflare Worker 做代理（零設定 + 最安全）
+
+> 想「任何裝置一開網頁就自動同步，又唔會再有 token 洩漏／被撤銷」就用呢個。免費，唔需要信用卡。
+
+## 為咩要
+
+瀏覽器**永遠唔會接觸 GitHub token**，token 只存在 Cloudflare 嘅加密環境變數。就算有人 view-source 都攞唔到任何鎖匙。
+
+## 部署步驟（全程瀏覽器）
+
+1. https://dash.cloudflare.com 註冊 → **Workers & Pages**
+2. 右上 **Create application** → 揀 **Workers** 分頁 → **Start with Hello World!**
+   （新版 UI 已經冇「Create Worker」按鈕，就係呢個）
+3. 名：`wine-journal-proxy` → **Deploy**
+4. **Edit code** → 全選刪除 → 貼入 `cloudflare-worker/worker.js` 全部內容 → **Deploy**
+5. **Settings → Variables and Secrets** 加：
+
+   | Name | 類型 | 值 |
+   |---|---|---|
+   | `GITHUB_TOKEN` | Secret | 你嘅 fine-grained token（Contents: Read and write） |
+   | `OWNER` | Text | `matthewyuwanghin` |
+   | `REPO` | Text | `wine-journal-data` |
+   | `BRANCH` | Text | `main` |
+   | `PATH` | Text | `data/tastings.json` |
+   | `PROXY_KEY` | Secret | 自己作一串亂碼（建議） |
+
+6. 開 `https://wine-journal-proxy.<你>.workers.dev/api/health?key=你的KEY` → 見到 `{"ok":true,...}` 即成功
+7. App **⚙️ 設定** → 模式揀 **☁️ Cloudflare Worker 代理** → 填代理網址 + Proxy Key → 測試連線 → 儲存並重新連線
+
+## 想所有裝置零設定
+
+`index.html` 搵 `BUILTIN_CONFIG`，填 `proxyUrl` 同 `proxyKey` → 上載覆蓋 → 完成。
+（Proxy 網址唔係秘密，PROXY_KEY 只係防止被人亂用；即使洩漏都只影響筆記，唔會影響 GitHub 帳號。）
+
+## 免費額度
+
+100,000 請求／日、10ms CPU／次；超額只會報錯，**唔會扣錢**。
+
+---
+
 # 📋 最後 Checklist
 
 - [ ] 下載 + 解壓 `wine-journal.zip`

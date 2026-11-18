@@ -465,6 +465,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
             <select id="cfgMode">
               <option value="auto">自動（有自己嘅 SQLite 後端就用，否則存本機）</option>
               <option value="github">⭐ GitHub Repository 做資料庫（跨裝置同步，有版本紀錄）</option>
+              <option value="proxy">☁️ Cloudflare Worker 代理（零 token 設定，最安全）</option>
               <option value="gist">GitHub Gist 做資料庫（最快設定，單一檔案）</option>
               <option value="local">只存本機 IndexedDB（唔會離開呢部裝置）</option>
             </select>
@@ -486,6 +487,24 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
             <div class="field"><label for="cfgPath">資料檔路徑 Path</label><input id="cfgPath" type="text" placeholder="data/tastings.json" autocomplete="off"></div>
             <div class="field wide">
               <label class="toggle"><input type="checkbox" id="cfgSkipPhotos"> 唔把相片上傳 GitHub（只留本機快取，令 repo 保持細）</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="proxyFields" class="hidden">
+          <div class="grid" style="margin-top:14px">
+            <div class="field wide">
+              <label for="cfgProxyUrl">Cloudflare Worker 代理網址 <em>例如 https://wine-journal-proxy.你的名.workers.dev</em></label>
+              <input id="cfgProxyUrl" type="text" placeholder="https://wine-journal-proxy.xxxx.workers.dev" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field"><label for="cfgProxyKey">Proxy Key <em>Worker 內設的 PROXY_KEY，可留空</em></label>
+              <input id="cfgProxyKey" type="password" placeholder="選填" autocomplete="off"></div>
+            <div class="field wide">
+              <div class="hint" style="font-size:12.5px;color:var(--muted);line-height:1.6">
+                ✅ 呢個模式之下，GitHub token 只存在 Cloudflare Worker，<b>瀏覽器完全冇 token</b> → 任何裝置一開即用、唔會再被 GitHub secret scanning 攔截。<br>
+                Worker 設定（Cloudflare Dashboard → 你個 Worker → Settings → Variables and Secrets）：<br>
+                <code>GITHUB_TOKEN</code>（Secret）、<code>OWNER</code>、<code>REPO</code>、<code>BRANCH</code>、<code>PATH</code>、<code>PROXY_KEY</code>（Secret）
+              </div>
             </div>
           </div>
         </div>
@@ -693,25 +712,49 @@ const idbAdapter = (() => {
   };
 })();
 
+/* 後端 / Cloudflare Worker 共用：可以係相對路徑（自己部 server）或完整網址（Worker 代理） */
+function apiUrl(path) {
+  const base = (typeof CFG !== "undefined" && CFG && CFG.proxyUrl ? String(CFG.proxyUrl) : "").replace(/\/+$/, "");
+  return base ? base + "/" + path : path;
+}
+function apiHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  if (typeof CFG !== "undefined" && CFG && CFG.proxyKey) h["X-Proxy-Key"] = CFG.proxyKey;
+  return h;
+}
+
 const serverAdapter = {
   key: "server",
+  label: "API 後端",
+  tone: "",
   async init() { return true; },
   async all() {
-    const r = await fetch("api/tastings", { cache: "no-store", headers: { Accept: "application/json" } });
-    if (!r.ok) throw new Error("api list failed");
+    const r = await fetch(apiUrl("api/tastings"), { cache: "no-store", headers: apiHeaders({ Accept: "application/json" }) });
+    if (!r.ok) throw new Error("讀取失敗 HTTP " + r.status);
     const j = await r.json();
     return Array.isArray(j) ? j : (j.records || []);
   },
   async put(rec) {
-    const r = await fetch("api/tastings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec) });
-    if (!r.ok) throw new Error("api save failed");
+    const r = await fetch(apiUrl("api/tastings"), {
+      method: "POST",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(rec)
+    });
+    if (!r.ok) {
+      let detail = "";
+      try { const j = await r.json(); detail = j.error || j.detail || ""; } catch (_) {}
+      throw new Error("儲存失敗 HTTP " + r.status + (detail ? " · " + detail : ""));
+    }
     return rec;
   },
   async del(id) {
-    const r = await fetch("api/tastings/" + encodeURIComponent(id), { method: "DELETE" });
-    if (!r.ok) throw new Error("api delete failed");
+    const r = await fetch(apiUrl("api/tastings/" + encodeURIComponent(id)), { method: "DELETE", headers: apiHeaders() });
+    if (!r.ok) throw new Error("刪除失敗 HTTP " + r.status);
   },
-  async clear() { const r = await fetch("api/tastings", { method: "DELETE" }); if (!r.ok) throw new Error("api clear failed"); }
+  async clear() {
+    const r = await fetch(apiUrl("api/tastings"), { method: "DELETE", headers: apiHeaders() });
+    if (!r.ok) throw new Error("清空失敗 HTTP " + r.status);
+  }
 };
 
 const memoryAdapter = (() => {
@@ -742,6 +785,7 @@ const DEFAULT_CFG = {
   token: "", owner: "", repo: "", branch: "main", path: "data/tastings.json",
   skipPhotos: true,
   gistToken: "", gistId: "", gistFile: "wine-journal.json",
+  proxyUrl: "", proxyKey: "",
   lastSync: null
 };
 
@@ -765,7 +809,10 @@ const BUILTIN_CONFIG = (() => {
     branch: "main",
     path: "data/tastings.json",
     skipPhotos: true,
-    token_b64: ""     // ← 故意留空：token 只存喺各裝置 localStorage
+    token_b64: "",    // ← 故意留空：GitHub token 只存喺各裝置 localStorage（避免被 secret scanning 撤銷）
+    proxyUrl: "",     // ← 如果你用 Cloudflare Worker 代理，填 Worker 網址，例如
+                      //    "https://wine-journal-proxy.你的名.workers.dev"
+    proxyKey: ""      // ← Worker 嘅 PROXY_KEY（選填；填了就所有裝置零設定）
   };
   const cfg = Object.assign({}, raw, { token: "" });
   try { cfg.token = raw.token_b64 ? atob(raw.token_b64) : ""; } catch (_) { cfg.token = ""; }
@@ -800,10 +847,11 @@ let CFG = (() => {
   try { const raw = localStorage.getItem(CFG_KEY); if (raw) saved = JSON.parse(raw); } catch (_) {}
   if (saved && typeof saved === "object") {
     // 使用者自己存過自訂設定（換過 token 或按過儲存）→ 用佢嘅；否則只保留偏好，連線資料用內建
-    const hasConn = !!(saved.token || saved.gistToken);
+    const hasConn = !!(saved.token || saved.gistToken || saved.proxyUrl);
     const isCustom = (saved.custom === true && hasConn) ||
       (!!saved.token && saved.token !== BUILTIN_CONFIG.token) ||
-      (!!saved.gistToken && saved.gistToken !== BUILTIN_CONFIG.gistToken);
+      (!!saved.gistToken && saved.gistToken !== BUILTIN_CONFIG.gistToken) ||
+      (!!saved.proxyUrl && saved.proxyUrl !== BUILTIN_CONFIG.proxyUrl);
     const ALWAYS = ["lastSync", "skipPhotos", "custom"];
     Object.keys(saved).forEach((k) => {
       const v = saved[k];
@@ -1097,6 +1145,19 @@ async function resolveStore() {
   if (mode === "gist") {
     if (!(CFG.gistId && (CFG.gistToken || CFG.token))) throw new Error("Gist 設定未完成：需要 Token 同 Gist ID");
     const a = gistAdapter(); await a.init(); return a;
+  }
+  if (mode === "proxy" || (mode === "auto" && CFG.proxyUrl)) {
+    if (!CFG.proxyUrl) throw new Error("請填 Cloudflare Worker 代理網址（例如 https://wine-journal-proxy.you.workers.dev）");
+    const r = await fetch(apiUrl("api/health"), { cache: "no-store", headers: apiHeaders({ Accept: "application/json" }) });
+    let j = {};
+    try { j = await r.json(); } catch (_) {}
+    if (!r.ok) throw new Error("代理回應 HTTP " + r.status + (j && j.error ? " · " + j.error : ""));
+    if (!j || !j.ok) throw new Error("代理未設定好" + (j && j.error ? "：" + j.error : ""));
+    let host = "Worker";
+    try { host = new URL(CFG.proxyUrl).host; } catch (_) {}
+    serverAdapter.label = "Cloudflare Worker · " + host + (j.count != null ? "（" + j.count + " 筆）" : "");
+    await serverAdapter.init();
+    return serverAdapter;
   }
   if (mode === "local") return await localStore();
   // auto：先試自己部署嘅 SQLite 後端，否則本機
@@ -1784,6 +1845,8 @@ function renderSettings() {
   set("#cfgGistToken", CFG.gistToken);
   set("#cfgGistId", CFG.gistId);
   set("#cfgGistFile", CFG.gistFile || "wine-journal.json");
+  set("#cfgProxyUrl", CFG.proxyUrl || "");
+  set("#cfgProxyKey", CFG.proxyKey || "");
   $("#cfgSkipPhotos").checked = !!CFG.skipPhotos;
   toggleCfgFields();
 
@@ -1812,6 +1875,8 @@ function toggleCfgFields() {
   const m = $("#cfgMode").value;
   $("#ghFields").classList.toggle("hidden", m !== "github");
   $("#gistFields").classList.toggle("hidden", m !== "gist");
+  const pf = $("#proxyFields");
+  if (pf) pf.classList.toggle("hidden", m !== "proxy" && m !== "auto");
 }
 
 function readSettingsForm() {
@@ -1825,6 +1890,8 @@ function readSettingsForm() {
   CFG.gistToken = ($("#cfgGistToken").value || "").trim() || CFG.token;
   CFG.gistId = ($("#cfgGistId").value || "").trim();
   CFG.gistFile = ($("#cfgGistFile").value || "").trim() || "wine-journal.json";
+  CFG.proxyUrl = ($("#cfgProxyUrl").value || "").trim().replace(/\/+$/, "");
+  CFG.proxyKey = ($("#cfgProxyKey").value || "").trim();
 }
 
 function cfgMsg(html, tone) {
@@ -1850,6 +1917,16 @@ function wireSettings() {
     cfgMsg("測試中…");
     try {
       let adapter;
+      if (CFG.mode === "proxy") {
+        if (!CFG.proxyUrl) throw new Error("請填 Worker 代理網址");
+        const r = await fetch(apiUrl("api/health"), { cache: "no-store", headers: apiHeaders({ Accept: "application/json" }) });
+        let j = {};
+        try { j = await r.json(); } catch (_) {}
+        if (!r.ok) throw new Error("代理回應 HTTP " + r.status + (j && j.error ? " · " + j.error : ""));
+        if (!j || !j.ok) throw new Error("代理未設定好" + (j && j.error ? "：" + j.error : ""));
+        cfgMsg(`✅ Worker 連線成功！雲端現有 <b>${j.count != null ? j.count : "?"}</b> 筆記錄（${esc(j.repo || "")}）。按「💾 儲存並重新連線」開始使用。`, "ok");
+        return;
+      }
       if (CFG.mode === "github") { if (!ghRepoReady()) throw new Error("請填齊 Token / Owner / Repo"); adapter = repoAdapter(); }
       else if (CFG.mode === "gist") { if (!(CFG.gistId && (CFG.gistToken || CFG.token))) throw new Error("請填 Gist ID 同 Token"); adapter = gistAdapter(); }
       else if (CFG.mode === "local") { cfgMsg("✅ 本機模式唔需要連線，直接用得。", "ok"); return; }
@@ -1889,11 +1966,14 @@ function wireSettings() {
   // 產生一鍵設定連結
   $("#cfgLink").addEventListener("click", () => {
     readSettingsForm();
-    if (!CFG.token) { cfgMsg("❌ 請先喺上面貼上 token（呢個連結係用嚟帶 token 去其他裝置）", "err"); return; }
+    const needToken = (CFG.mode === "github" || CFG.mode === "gist") && !CFG.token;
+    if (needToken) { cfgMsg("❌ 請先喺上面貼上 token（呢個連結係用嚟帶 token 去其他裝置）", "err"); return; }
+    if (CFG.mode === "proxy" && !CFG.proxyUrl) { cfgMsg("❌ 請先填 Worker 代理網址", "err"); return; }
     const payload = {
       mode: CFG.mode, token: CFG.token, owner: CFG.owner, repo: CFG.repo,
       branch: CFG.branch, path: CFG.path, skipPhotos: !!CFG.skipPhotos,
-      gistToken: CFG.gistToken, gistId: CFG.gistId, gistFile: CFG.gistFile
+      gistToken: CFG.gistToken, gistId: CFG.gistId, gistFile: CFG.gistFile,
+      proxyUrl: CFG.proxyUrl, proxyKey: CFG.proxyKey
     };
     const b64 = b64encode(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     const url = location.origin + location.pathname + "#setup=" + b64;

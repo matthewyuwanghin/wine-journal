@@ -10,6 +10,7 @@ Desktop / 平板 / 手機同一個介面自動適應；表單全部用 **dropdow
 | ⭐ **GitHub Repository** | 你 repo 內 `data/tastings.json`，每次儲存＝1 個 commit | **想放 GitHub Pages 又要跨裝置同步**（推薦） | 3 分鐘 |
 | **GitHub Gist** | 一個 secret gist 檔 | 最快、唔想開 repo；只適合純文字 | 1 分鐘 |
 | **SQLite 後端** | `server/` 內 SQLite 檔 | 自己電腦 / Render / Railway / VPS 跑，真正 SQL 查詢 | 5 分鐘 |
+| ☁️ **Cloudflare Worker 代理** | 同 GitHub repo，但 token 只留喺 Worker | 想「零 token 設定 + 唔會被 secret scanning 攔截」 | 10 分鐘（見 `cloudflare-worker/`） |
 | 本機 IndexedDB | 你部瀏覽器 | 一個人一部機、離線用 | 0 |
 
 > 📦 **想直接部署？** 睇 **[DEPLOY.md](DEPLOY.md)** —— 英文逐步教學（下載 → GitHub Pages → GitHub repo 做資料庫 → 跨裝置驗證）。
