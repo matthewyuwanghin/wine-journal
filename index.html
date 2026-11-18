@@ -309,6 +309,8 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 }
 .entry .thumb[data-thumb]{cursor:pointer}
 .entry .thumb[data-thumb]:active{opacity:.7}
+.trash-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.trash-row:last-child{border-bottom:0}
 .photo-manual{margin-bottom:14px}
 .photo-manual .row{display:flex;gap:8px;align-items:stretch}
 .photo-manual input{flex:1;min-width:0}
@@ -636,6 +638,38 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
               <li>返嚟撳上面「🧪 測試搵相」</li>
             </ol>
           </details>
+        </div>
+
+        <div style="margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)">
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🗂 備份與還原</div>
+          <div style="font-size:11.5px;color:var(--muted);line-height:1.65;margin-bottom:10px">
+            每次儲存／刪除都會自動喺 GitHub 產生一個 commit = 完整版本紀錄。<br>
+            <b>三層保護</b>：① Git 版本紀錄（雲端，可回到任何時候）
+            ② 手動下載備份（JSON / CSV）　③ 回收桶（本機，最近 30 筆刪除）
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn sm" id="bkJson">⬇️ JSON 備份</button>
+            <button type="button" class="btn sm ghost" id="bkCsv">⬇️ CSV（Excel）</button>
+            <button type="button" class="btn sm ghost" id="bkImport">⬆️ 由 JSON 還原</button>
+          </div>
+
+          <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div style="font-size:12.5px;font-weight:600">🕘 版本紀錄（Git 歷史）</div>
+            <button type="button" class="btn sm ghost" id="bkHist">🔄 重新整理</button>
+          </div>
+          <div id="historyBox" style="margin-top:6px"></div>
+
+          <div style="margin-top:16px;font-size:12.5px;font-weight:600">🗑 回收桶 <span id="trashCount" style="color:var(--muted);font-weight:400"></span></div>
+          <div id="trashBox" style="margin-top:6px"></div>
+          <button type="button" class="btn sm ghost" id="bkTrashClear" style="margin-top:8px">清空回收桶</button>
+        </div>
+
+        <div style="margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px;font-size:12.5px;color:var(--muted)">
+            版本 <b id="appVer" style="color:#cfc0ba">—</b><br>
+            見到舊畫面／功能唔見咗？撳右邊強制重新下載最新版。
+          </div>
+          <button type="button" class="btn sm" id="btnHardReload">🔄 強制重新載入</button>
         </div>
 
         <div id="ghFields" class="hidden">
@@ -984,6 +1018,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
+const APP_VERSION = "v3.4 · 2026-11-18 · 備份 / 回收桶 / 版本還原";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -1949,9 +1984,10 @@ $("#listBody").addEventListener("click", async (e) => {
   if (btn.dataset.act === "view") openDetail(rec);
   if (btn.dataset.act === "edit") fillForm(rec);
   if (btn.dataset.act === "del") {
-    if (!confirm(`確定刪除「${rec.name || "未命名"}」這筆記錄？`)) return;
+    if (!confirm(`確定刪除「${rec.name || "未命名"}」這筆記錄？\n（刪除後仍然可以喺 ⚙️ 設定 → 回收桶 還原）`)) return;
+    pushTrash(rec);
     await DB.adapter.del(rec.id);
-    await refresh(); toast("已刪除");
+    await refresh(); toast("已刪除 · 可喺設定 → 回收桶還原", 3000);
   }
 });
 ["#q", "#fCat", "#fCountry", "#fSort"].forEach((sel) => {
@@ -2127,6 +2163,104 @@ function openGoogleImages(rec) {
   if (!w) location.href = url;
 }
 
+/* ---------------- 9c. 備份 / 回收桶 / 版本還原 ---------------- */
+const TRASH_KEY = "wj.trash.v1";
+function trashAll() { try { return JSON.parse(localStorage.getItem(TRASH_KEY) || "[]"); } catch (_) { return []; } }
+function trashSave(a) { try { localStorage.setItem(TRASH_KEY, JSON.stringify(a.slice(0, 30))); } catch (_) {} }
+
+/** 刪除前先放入回收桶（本機，最多 30 筆） */
+function pushTrash(recs) {
+  const a = trashAll();
+  (Array.isArray(recs) ? recs : [recs]).forEach((r) => {
+    if (r) a.unshift({ at: new Date().toISOString(), rec: r });
+  });
+  trashSave(a);
+  renderTrashList();
+}
+
+async function restoreFromTrash(idx) {
+  const a = trashAll();
+  const item = a[idx];
+  if (!item) return;
+  const rec = Object.assign({}, item.rec);
+  rec.updatedAt = new Date().toISOString();
+  try {
+    await DB.adapter.put(rec);
+  } catch (e) {
+    toast("復原失敗：" + (e && e.message ? e.message : ""), 3200);
+    return;
+  }
+  a.splice(idx, 1);
+  trashSave(a);
+  await refresh();
+  renderTrashList();
+  toast("✅ 已復原：" + (rec.name || "記錄"));
+}
+
+function renderTrashList() {
+  const box = $("#trashBox");
+  if (!box) return;
+  const a = trashAll();
+  const cnt = $("#trashCount");
+  if (cnt) cnt.textContent = a.length ? `(${a.length})` : "";
+  if (!a.length) { box.innerHTML = `<div style="font-size:12.5px;color:var(--muted)">回收桶空空如也 👍</div>`; return; }
+  box.innerHTML = a.map((it, i) => {
+    const d = String(it.at || "").replace("T", " ").slice(0, 16);
+    return `<div class="trash-row">
+      <div style="min-width:0">
+        <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.rec.name || "未命名")}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(it.rec.producer || "")}${it.rec.producer ? " · " : ""}${esc(d)} 刪除</div>
+      </div>
+      <button class="btn sm ghost" data-trash="${i}">↩ 復原</button>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("[data-trash]").forEach((b) => b.addEventListener("click", () => restoreFromTrash(Number(b.dataset.trash))));
+}
+
+/** 版本紀錄（Git 歷史） */
+async function loadHistory() {
+  const box = $("#historyBox");
+  if (!box) return;
+  const b = proxyBase();
+  if (!b) { box.innerHTML = `<div style="font-size:12.5px;color:#e3b356">需要 Cloudflare Worker 代理先睇到版本紀錄。</div>`; return; }
+  box.innerHTML = `<div style="font-size:12.5px;color:var(--muted)">讀取中…</div>`;
+  let d;
+  try {
+    const r = await fetch(b + "/api/history?limit=10");
+    d = await r.json();
+  } catch (e) { box.innerHTML = `<div style="font-size:12.5px;color:#e3b356">連唔到 Worker（要先更新 worker.js）</div>`; return; }
+  if (!d || !d.ok) { box.innerHTML = `<div style="font-size:12.5px;color:#e3b356">讀取失敗：${esc((d && d.error) || "未知")}（可能 worker.js 未更新）</div>`; return; }
+  if (!d.commits.length) { box.innerHTML = `<div style="font-size:12.5px;color:var(--muted)">暫時未有版本紀錄</div>`; return; }
+  box.innerHTML = d.commits.map((c) => `<div class="trash-row">
+      <div style="min-width:0">
+        <div style="font-size:13px"><b>${esc(c.short)}</b> · ${esc(String(c.date).replace("T", " ").slice(0, 16))}</div>
+        <div style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.message)}</div>
+      </div>
+      <button class="btn sm ghost" data-restore="${esc(c.sha)}">↩ 還原</button>
+    </div>`).join("")
+    + `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">還原會產生一個新 commit，舊版本永遠仍然喺歷史入面。</div>`;
+  box.querySelectorAll("[data-restore]").forEach((btn) => btn.addEventListener("click", () => restoreVersion(btn.dataset.restore)));
+}
+
+async function restoreVersion(sha) {
+  const b = proxyBase();
+  if (!b) return toast("需要 Worker 代理", 3000);
+  if (!confirm(`確定還原到版本 ${sha.slice(0, 7)}？\n\n而家嘅資料會變成嗰個版本。\n（會自動留一個新 commit，所以隨時可以再還原返，唔會真係失去資料）`)) return;
+  toast("還原中…", 2500);
+  let d;
+  try {
+    const r = await fetch(b + "/api/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sha }),
+    });
+    d = await r.json();
+  } catch (e) { return toast("還原失敗：連唔到 Worker", 3200); }
+  if (!d || !d.ok) return toast("還原失敗：" + ((d && d.error) || "未知"), 3500);
+  await refresh();
+  toast(`✅ 已還原到 ${sha.slice(0, 7)}（${d.restored} 筆）`, 3500);
+}
+
 /** 相片選擇器 */
 async function openPhotoPicker(rec) {
   const q = buildPhotoQuery(rec) || "wine bottle";
@@ -2215,7 +2349,8 @@ async function testPhotoService() {
   let res;
   try { res = await findWineImages({ name: "Château Margaux", producer: "", vintage: "2015" }, true); }
   catch (_) { res = { list: [], error: "network" }; }
-  if (res.error) box.innerHTML = `<span style="color:#e3b356">⚠️ ${esc(IMG_ERR_MSG[res.error] || res.error)}</span>`;
+  if (res.error) box.innerHTML = `<span style="color:#e3b356">⚠️ ${esc(IMG_ERR_MSG[res.error] || res.error)}</span>`
+    + (res.error === "no_key" ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">唔加 key 都可以：撳縮圖 →「🔎 喺 Google 搵圖」→ 貼圖片網址 → 套用</div>` : "");
   else box.innerHTML = `<span style="color:#59c07e">✅ 正常，搵到 ${res.list.length} 張相</span>
     <div class="photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(64px,1fr));max-width:320px">${res.list.slice(0, 4).map((x) => `<button type="button" disabled><img src="${esc(x.thumb)}" alt=""></button>`).join("")}</div>`;
 }
@@ -2394,8 +2529,9 @@ $("#exportCsv2").addEventListener("click", exportCSV);
 $("#importBtn").addEventListener("click", () => $("#importFile").click());
 $("#importFile").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) importJSON(f); e.target.value = ""; });
 $("#wipeBtn").addEventListener("click", async () => {
-  if (!confirm("確定清空所有記錄？此動作無法復原（建議先匯出備份）。")) return;
-  await DB.adapter.clear(); await refresh(); toast("已清空");
+  if (!confirm("確定清空所有記錄？\n（所有記錄會放入回收桶，可以喺設定逐一復原）")) return;
+  pushTrash(STATE.records.slice());
+  await DB.adapter.clear(); await refresh(); toast("已清空 · 記錄已放入回收桶", 3200);
 });
 
 /* ---------------- 13. 示範資料 ---------------- */
@@ -2500,6 +2636,9 @@ async function reconnect() {
 }
 
 function renderSettings() {
+  const av = $("#appVer"); if (av) av.textContent = APP_VERSION;
+  renderTrashList();
+  loadHistory();
   const ai = $("#cfgAutoImg"); if (ai) ai.checked = autoImgOn();
   const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? "" : v; };
   set("#cfgMode", CFG.mode || "auto");
@@ -2589,6 +2728,22 @@ function wireSettings() {
   if (bp) bp.addEventListener("click", bulkFindPhotos);
   const tp = $("#btnTestPhoto");
   if (tp) tp.addEventListener("click", testPhotoService);
+  const bj = $("#bkJson"), bc = $("#bkCsv"), bi = $("#bkImport"), bh = $("#bkHist"), bt = $("#bkTrashClear");
+  if (bj) bj.addEventListener("click", exportJSON);
+  if (bc) bc.addEventListener("click", exportCSV);
+  if (bi) bi.addEventListener("click", () => $("#importFile").click());
+  if (bh) bh.addEventListener("click", loadHistory);
+  if (bt) bt.addEventListener("click", () => {
+    if (!trashAll().length) { toast("回收桶已經係空"); return; }
+    if (!confirm("清空回收桶？清空後喺 app 內就唔可以復原（但仍然可以喺 GitHub 版本紀錄搵返）。")) return;
+    trashSave([]); renderTrashList(); toast("已清空回收桶");
+  });
+  const hr = $("#btnHardReload");
+  if (hr) hr.addEventListener("click", () => {
+    const u = location.pathname + "?v=" + Date.now();
+    toast("重新載入最新版…", 1200);
+    setTimeout(() => location.replace(u), 300);
+  });
   $("#cfgMode").addEventListener("change", toggleCfgFields);
   $("#cfgTokenToggle").addEventListener("click", () => {
     const t = $("#cfgToken");
