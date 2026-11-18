@@ -101,6 +101,7 @@ button,input,select,textarea{font-family:inherit;font-size:15px;color:inherit}
   transition:.18s;
 }
 .tabbar button .ic{font-size:17px;line-height:1}
+.tabbar button.locked{display:none !important}
 .tabbar button[aria-selected="true"]{
   color:#fff;background:linear-gradient(180deg,rgba(179,18,62,.35),rgba(179,18,62,.12));
   border-color:rgba(179,18,62,.5);
@@ -664,6 +665,24 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
           <button type="button" class="btn sm ghost" id="bkTrashClear" style="margin-top:8px">清空回收桶</button>
         </div>
 
+        <div style="margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)">
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:6px">🔒 私隱（設定頁保護）</div>
+          <div id="lockStatus" style="font-size:12.5px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn sm" id="btnSetPin">🔑 設定 / 更改 PIN</button>
+            <button type="button" class="btn sm ghost" id="btnLockNow">🚪 立即鎖定</button>
+            <button type="button" class="btn sm danger" id="btnDisablePin">關閉 PIN</button>
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:10px">
+            <b>點樣入返嚟</b>（設定頁會被隱藏）：<br>
+            ① 連續撳左上角 <b>🍷 品酒手帳 logo 5 下</b>　② 或者開網址加 <code>?admin=1</code><br>
+            ③ 解鎖後 12 小時內有效，重新開瀏覽器都要再入 PIN。<br>
+            😅 <b>忘記 PIN？</b>網址加 <code>?resetpin=1</code>（會先問你確認）即可清除，重新設定。<br>
+            ⚠️ 呢個係「唔好俾人隨便撳到」嘅 UI 鎖；<b>要連資料都私有</b>，就要喺 Cloudflare Worker
+            設 <code>PROXY_KEY</code>，並喺上面「Proxy Key」欄填同一個值（咁冇 key 嘅人讀寫都做唔到）。
+          </div>
+        </div>
+
         <div style="margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <div style="flex:1;min-width:180px;font-size:12.5px;color:var(--muted)">
             版本 <b id="appVer" style="color:#cfc0ba">—</b><br>
@@ -1018,7 +1037,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v3.4 · 2026-11-18 · 備份 / 回收桶 / 版本還原";
+const APP_VERSION = "v3.5 · 2026-11-18 · 設定頁 PIN 鎖";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -1851,6 +1870,10 @@ $("#resetBtn").addEventListener("click", () => resetForm(false));
 
 /* ---------------- 8. 視圖 ---------------- */
 function switchView(v) {
+  if (v === "settings" && lockEnabled() && !isUnlocked()) {
+    requireUnlock(() => switchView("settings"));
+    return;
+  }
   STATE.view = v;
   $$(".view").forEach((s) => s.classList.add("hidden"));
   const el = $("#view-" + v); if (el) el.classList.remove("hidden");
@@ -2261,6 +2284,178 @@ async function restoreVersion(sha) {
   toast(`✅ 已還原到 ${sha.slice(0, 7)}（${d.restored} 筆）`, 3500);
 }
 
+/* ---------------- 9d. 私隱鎖（設定頁 PIN 保護） ---------------- */
+const LOCK_KEY = "wj.lock.v1";          // { enabled, salt, hash, at }
+const UNLOCK_SESSION = "wj.unlocked.v1"; // 解鎖後 12 小時內免再輸入
+const UNLOCK_HOURS = 12;
+
+function lockCfg() { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || "{}"); } catch (_) { return {}; } }
+function lockSave(o) { try { localStorage.setItem(LOCK_KEY, JSON.stringify(o)); } catch (_) {} }
+function lockEnabled() { const c = lockCfg(); return !!(c.enabled && c.hash); }
+
+async function hashPin(pin, salt) {
+  const bytes = new TextEncoder().encode(salt + "|" + pin + "|wine-journal-v1");
+  if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest) {
+    try {
+      const buf = await window.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (_) { /* 落返後備 */ }
+  }
+  let h1 = 0x811c9dc5, h2 = 0x1000193;
+  for (let i = 0; i < bytes.length; i++) {
+    h1 = ((h1 ^ bytes[i]) * 16777619) >>> 0;
+    h2 = (h2 + bytes[i] * 31) >>> 0;
+  }
+  return "fb" + h1.toString(16) + h2.toString(16);
+}
+function newSalt() {
+  const a = new Uint8Array(12);
+  if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+  else for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function isUnlocked() {
+  if (!lockEnabled()) return true;
+  let t = 0;
+  try { t = Number(sessionStorage.getItem(UNLOCK_SESSION) || 0); } catch (_) { t = 0; }
+  return !!t && Date.now() - t < UNLOCK_HOURS * 3600 * 1000;
+}
+function setUnlocked() { try { sessionStorage.setItem(UNLOCK_SESSION, String(Date.now())); } catch (_) {} }
+function applyLockUI() {
+  const btn = document.querySelector('.tabbar button[data-view="settings"]');
+  const hide = lockEnabled() && !isUnlocked();
+  if (btn) btn.classList.toggle("locked", hide);
+  const st = $("#lockStatus");
+  if (st) st.innerHTML = lockEnabled()
+    ? (isUnlocked() ? `<span style="color:#59c07e">🔓 已解鎖（${UNLOCK_HOURS} 小時內有效）</span>` : `<span style="color:#e3b356">🔒 已鎖定</span>`)
+    : `<span style="color:var(--muted)">未設定 PIN（任何人都可以開設定頁）</span>`;
+}
+function lockNow() {
+  try { sessionStorage.removeItem(UNLOCK_SESSION); } catch (_) {}
+  applyLockUI();
+  switchView("add");
+  toast("🔒 已鎖定，設定頁隱藏", 2600);
+}
+
+/* PIN 輸入彈窗 */
+function openPinModal(opts) {
+  const close = () => { $("#modalRoot").innerHTML = ""; };
+  $("#modalRoot").innerHTML = `<div class="modal" id="modal"><div class="sheet" role="dialog" aria-modal="true" style="max-width:400px">
+    <div class="sheet-head"><div><h3>${esc(opts.title)}</h3>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(opts.desc || "")}</div></div>
+      <button class="x" id="pinClose" aria-label="關閉">✕</button></div>
+    <div class="dl">
+      <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+        placeholder="4–8 位數字" maxlength="8"
+        style="width:100%;font-size:20px;letter-spacing:6px;text-align:center;padding:14px">
+      <div id="pinErr" style="font-size:12.5px;color:#e05a5a;margin-top:8px;min-height:17px"></div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn" id="pinOk" style="flex:1">確認</button>
+        <button class="btn ghost" id="pinCancel">取消</button>
+      </div>
+    </div></div></div>`;
+  const inp = $("#pinInput");
+  const err = $("#pinErr");
+  $("#pinClose").addEventListener("click", close);
+  $("#pinCancel").addEventListener("click", close);
+  $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") close(); });
+  const submit = async () => {
+    const pin = (inp.value || "").replace(/\D/g, "");
+    if (pin.length < 4) { err.textContent = "PIN 最少 4 位數字"; return; }
+    err.textContent = "檢查中…";
+    const msg = await opts.onSubmit(pin);
+    if (msg) { err.textContent = msg; inp.value = ""; inp.focus(); }
+  };
+  $("#pinOk").addEventListener("click", submit);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  setTimeout(() => inp.focus(), 150);
+}
+
+/** 需要解鎖才執行 then() */
+function requireUnlock(then) {
+  if (!lockEnabled() || isUnlocked()) { applyLockUI(); if (then) then(); return; }
+  openPinModal({
+    title: "🔒 需要 PIN",
+    desc: "設定頁已鎖定",
+    onSubmit: async (pin) => {
+      const c = lockCfg();
+      const h = await hashPin(pin, c.salt);
+      if (h !== c.hash) return "PIN 唔啱，再試";
+      setUnlocked();
+      $("#modalRoot").innerHTML = "";
+      applyLockUI();
+      toast("🔓 已解鎖；12 小時內免再輸入", 2600);
+      if (then) then();
+      return null;
+    },
+  });
+}
+
+async function setPin() {
+  if (lockEnabled()) { requireUnlock(() => changePinFlow()); return; }
+  changePinFlow();
+}
+function changePinFlow() {
+  openPinModal({
+    title: "🔒 設定 PIN",
+    desc: "用 4–8 位數字保護設定頁",
+    onSubmit: async (pin) => {
+      await new Promise((r) => setTimeout(r, 30));
+      openPinModal({
+        title: "再輸入一次",
+        desc: "確認 PIN",
+        onSubmit: async (pin2) => {
+          if (pin2 !== pin) return "兩次唔一樣，請重新開始";
+          const salt = newSalt();
+          const hash = await hashPin(pin, salt);
+          lockSave({ enabled: true, salt, hash, at: new Date().toISOString() });
+          setUnlocked();
+          $("#modalRoot").innerHTML = "";
+          applyLockUI();
+          toast("✅ 已設定 PIN：設定頁以後要解鎖先見到", 3600);
+          return null;
+        },
+      });
+      return null;
+    },
+  });
+}
+
+function disablePin() {
+  if (!lockEnabled()) { toast("而家冇設定 PIN"); return; }
+  openPinModal({
+    title: "關閉 PIN 保護",
+    desc: "輸入現有 PIN 確認",
+    onSubmit: async (pin) => {
+      const c = lockCfg();
+      const h = await hashPin(pin, c.salt);
+      if (h !== c.hash) return "PIN 唔啱";
+      try { localStorage.removeItem(LOCK_KEY); sessionStorage.removeItem(UNLOCK_SESSION); } catch (_) {}
+      $("#modalRoot").innerHTML = "";
+      applyLockUI();
+      toast("已關閉 PIN 保護（設定頁再次公開）", 3200);
+      return null;
+    },
+  });
+}
+
+/** 連續撳品牌 logo 5 下 = 秘密入口 */
+function wireSecretEntry() {
+  const brand = document.querySelector(".brand");
+  if (!brand) return;
+  let taps = 0, timer = null;
+  brand.addEventListener("click", () => {
+    taps++;
+    clearTimeout(timer);
+    timer = setTimeout(() => { taps = 0; }, 2500);
+    if (taps >= 5) {
+      taps = 0;
+      requireUnlock(() => switchView("settings"));
+    }
+  });
+}
+
 /** 相片選擇器 */
 async function openPhotoPicker(rec) {
   const q = buildPhotoQuery(rec) || "wine bottle";
@@ -2639,6 +2834,7 @@ function renderSettings() {
   const av = $("#appVer"); if (av) av.textContent = APP_VERSION;
   renderTrashList();
   loadHistory();
+  applyLockUI();
   const ai = $("#cfgAutoImg"); if (ai) ai.checked = autoImgOn();
   const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? "" : v; };
   set("#cfgMode", CFG.mode || "auto");
@@ -2738,6 +2934,10 @@ function wireSettings() {
     if (!confirm("清空回收桶？清空後喺 app 內就唔可以復原（但仍然可以喺 GitHub 版本紀錄搵返）。")) return;
     trashSave([]); renderTrashList(); toast("已清空回收桶");
   });
+  const sp = $("#btnSetPin"), ln = $("#btnLockNow"), dp = $("#btnDisablePin");
+  if (sp) sp.addEventListener("click", setPin);
+  if (ln) ln.addEventListener("click", lockNow);
+  if (dp) dp.addEventListener("click", disablePin);
   const hr = $("#btnHardReload");
   if (hr) hr.addEventListener("click", () => {
     const u = location.pathname + "?v=" + Date.now();
@@ -2900,10 +3100,27 @@ async function boot() {
   });
 
   wireSettings();
+  wireSecretEntry();
   if (SETUP_IMPORTED) toast("🔗 已由設定連結自動套用雲端設定", 3200);
   await photoCache.init();
   await reconnect();
+  applyLockUI();
   switchView("add");
+  // 秘密入口：網址加 ?admin=1（可 bookmark 做「後台」）
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get("resetpin") === "1") {
+      if (lockEnabled() && confirm("清除 PIN 鎖？\n（清除後設定頁會再次公開，可以重新設定 PIN）")) {
+        try { localStorage.removeItem(LOCK_KEY); sessionStorage.removeItem(UNLOCK_SESSION); } catch (_) {}
+        applyLockUI();
+        toast("已清除 PIN 鎖", 3000);
+      }
+    }
+    if (q.get("admin") === "1") {
+      if (lockEnabled()) requireUnlock(() => switchView("settings"));
+      else switchView("settings");
+    }
+  } catch (_) {}
 }
 
 boot();
