@@ -504,6 +504,19 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
           <button class="btn" id="cfgTest">🔌 測試連線</button>
           <button class="btn" id="syncPull">⬇︎ 重新由雲端載入</button>
           <button class="btn" id="syncPush">⬆︎ 把本機資料合併上雲端</button>
+          <button class="btn" id="cfgLink">🔗 產生設定連結</button>
+        </div>
+
+        <div class="field wide" style="margin-top:16px">
+          <label for="cfgLinkOut">一鍵設定連結 <em>用手機／其他裝置打開呢條連結，就自動套用下面嘅設定（唔會經任何伺服器）</em></label>
+          <div style="display:flex;gap:8px">
+            <input id="cfgLinkOut" type="text" readonly placeholder="撳上面「🔗 產生設定連結」…" autocomplete="off">
+            <button type="button" class="btn sm" id="cfgLinkCopy" style="flex:0 0 auto">📋 複製</button>
+            <button type="button" class="btn sm ghost" id="cfgLinkOpen" style="flex:0 0 auto">開啟</button>
+          </div>
+          <div class="hint" style="font-size:12px;color:var(--muted);margin-top:6px">
+            ⚠️ 條連結內含 token，等同鎖匙 —— 只存喺你自己嘅備忘錄／密碼管理器，唔好公開貼出嚟。
+          </div>
         </div>
         <div id="cfgMsg" style="margin-top:16px;font-size:13px;color:var(--muted);line-height:1.65"></div>
       </div>
@@ -735,13 +748,14 @@ const DEFAULT_CFG = {
 /* =======================================================================
    ⚠️  內建雲端設定（Built-in cloud config）
    -----------------------------------------------------------------------
-   喺呢個 block 填好，所有裝置一開 app 就自動連上，唔需要逐部機入 token。
-   ⚠️ 安全：token 會直接寫入 index.html，即係個網站公開原始碼 = token 公開。
-      - 如果你個網站 repo 係 public（免費 GitHub Pages），任何人睇 source 都攞到呢個 token
-      - 建議：(a) 用 private 網站 repo（GitHub Pro），或
-              (b) 只俾 token 呢一個 repo 嘅 Contents 權限（現時已經係咁），
-                  同埋定期 Revoke + 重新產生再更新下面嗰行；
-              (c) 或者清空下面 token，改成每部機在「⚙️ 設定」自己填。
+   為安全理由，呢個檔案**唔會載入 token**：
+   GitHub secret scanning 會 decode base64 再比對，所以將 token 寫入呢個
+   檔案（即使 base64）都會被偵測 → push protection 攔住 → Allow 之後
+   token 會被標記／撤銷。而且網站係 public，任何人都睇得到。
+   正確做法（本 app 已支援）：
+     1) 每部裝置第一次用時，喺「⚙️ 設定」貼一次 token（存 localStorage），或
+     2) 用「⚙️ 設定 → 🔗 產生設定連結」，用手機打開該連結即可一鍵設定。
+   下面 owner/repo/branch/path 唔算敏感，可以保留方便使用。
    ======================================================================= */
 const BUILTIN_CONFIG = (() => {
   const raw = {
@@ -751,15 +765,34 @@ const BUILTIN_CONFIG = (() => {
     branch: "main",
     path: "data/tastings.json",
     skipPhotos: true,
-    // token 用 base64 存放：唔係加密（有心人解得開），只係避免 GitHub secret scanning
-    // 喺 public repo 偵測到 github_pat_ 而自動撤銷，同埋擋走隨手睇 source 嘅人。
-    token_b64: "WjJsMGFIVmlYM0JoZEY4eE1VRk9VVmRCUlZFd2NGZGFkWGhIU0c1RlJVdDFYM3BJTTNsYVVERTVXVEYxV1c4eE0wTkNlV3RRVDBrM1VIVTVia3hGWm1jMVNsQXdiMDVrV25reU9ESlpNa1ZCV1ZVeldHbHRVRkZDTVZadQ=="
+    token_b64: ""     // ← 故意留空：token 只存喺各裝置 localStorage
   };
-  
   const cfg = Object.assign({}, raw, { token: "" });
-  try { cfg.token = atob(raw.token_b64); } catch (_) { cfg.token = ""; }
+  try { cfg.token = raw.token_b64 ? atob(raw.token_b64) : ""; } catch (_) { cfg.token = ""; }
   return cfg;
 })();
+
+/* ---------------- 一鍵設定連結： #setup=<base64url(json)> ---------------- */
+function importSetupLink() {
+  const h = String(location.hash || "");
+  if (h.indexOf("#setup=") !== 0) return false;
+  try {
+    let b64 = h.slice(7).replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const data = JSON.parse(b64decode(b64));
+    if (!data || typeof data !== "object") return false;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(CFG_KEY) || "{}") || {}; } catch (_) { saved = {}; }
+    Object.assign(saved, data, { custom: true });
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(saved)); } catch (_) {}
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    return true;
+  } catch (err) {
+    console.warn("setup link parse failed", err);
+    return false;
+  }
+}
+const SETUP_IMPORTED = importSetupLink();
 
 let CFG = (() => {
   const cfg = Object.assign({}, DEFAULT_CFG, BUILTIN_CONFIG);
@@ -1757,12 +1790,16 @@ function renderSettings() {
   const last = CFG.lastSync ? new Date(CFG.lastSync).toLocaleString("zh-HK") : "未有紀錄";
   $("#syncHint").textContent = "而家用緊：" + DB.label;
   const persist = (() => { try { localStorage.setItem("wj.test", "1"); localStorage.removeItem("wj.test"); return true; } catch (_) { return false; } })();
-  const builtinNote = BUILTIN_CONFIG.token
-    ? `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
-         ⚠️ 已內建 GitHub 連線：<b>${esc(BUILTIN_CONFIG.owner)}/${esc(BUILTIN_CONFIG.repo)}</b> — 新裝置一開就自動連上，唔使再填。
-         Token 寫死喺 <code>index.html</code>，所以<b>網站 repo 如果係 public，睇 source 嘅人就攞到</b>（可以讀寫你嘅筆記）。想安全啲：網站 repo 用 private（需 Pro），或者定期 Revoke + 重新產生 token 再更新 <code>BUILTIN_CONFIG</code>，或者清空 token 改成逐部機自己填。
+  const hasToken = !!CFG.token;
+  const builtinNote = hasToken
+    ? `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #2c5741;background:rgba(79,174,122,.10);border-radius:10px;color:#bfe6cf;font-size:12.5px;line-height:1.6">
+         ✅ 呢部裝置已連接 <b>${esc(CFG.owner)}/${esc(CFG.repo)}</b>（token 只存在本機 localStorage，唔會寫入網站檔案）。
+         新裝置想一鍵設定：撳下面 <b>🔗 產生設定連結</b>，用手機打開該連結即可。
        </div>`
-    : "";
+    : `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid #4a3a1d;background:rgba(224,163,60,.09);border-radius:10px;color:#f3d9a8;font-size:12.5px;line-height:1.6">
+         ⚠️ 呢部裝置仲未接駁雲端。喺下面貼上 token → <b>🔌 測試連線</b> → <b>💾 儲存並重新連線</b>。
+         為安全理由，token <b>唔會</b>寫入 <code>index.html</code>（GitHub secret scanning 會掃到並撤銷），設定好之後可以用 <b>🔗 產生設定連結</b> 令其他裝置一鍵設定。
+       </div>`;
   $("#cfgMsg").innerHTML = builtinNote +
     `<div>📍 現時儲存位置：<b style="color:#fff">${esc(DB.label)}</b>　·　記錄數：<b style="color:#fff">${STATE.records.length}</b>　·　上次同步：${esc(last)}</div>` +
     (persist ? "" : `<div style="margin-top:6px;color:#f0c98a">⚠️ 呢個環境唔可以寫 localStorage，所以設定只會生效到關掉為止（唔會記住）。部署到 GitHub Pages 或本機開就會記住。</div>`) +
@@ -1849,6 +1886,34 @@ function wireSettings() {
     } catch (err) { cfgMsg("❌ " + esc(err.message || String(err)), "err"); }
   });
 
+  // 產生一鍵設定連結
+  $("#cfgLink").addEventListener("click", () => {
+    readSettingsForm();
+    if (!CFG.token) { cfgMsg("❌ 請先喺上面貼上 token（呢個連結係用嚟帶 token 去其他裝置）", "err"); return; }
+    const payload = {
+      mode: CFG.mode, token: CFG.token, owner: CFG.owner, repo: CFG.repo,
+      branch: CFG.branch, path: CFG.path, skipPhotos: !!CFG.skipPhotos,
+      gistToken: CFG.gistToken, gistId: CFG.gistId, gistFile: CFG.gistFile
+    };
+    const b64 = b64encode(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const url = location.origin + location.pathname + "#setup=" + b64;
+    const out = $("#cfgLinkOut");
+    out.value = url;
+    out.select && out.select();
+    cfgMsg("✅ 已產生。喺手機打開呢條連結就會自動設定（記得唔好公開分享）。", "ok");
+  });
+  $("#cfgLinkCopy").addEventListener("click", async () => {
+    const v = $("#cfgLinkOut").value;
+    if (!v) { cfgMsg("未有連結，先撳「🔗 產生設定連結」", "err"); return; }
+    try { await navigator.clipboard.writeText(v); cfgMsg("📋 已複製設定連結", "ok"); }
+    catch (_) { $("#cfgLinkOut").select(); document.execCommand("copy"); cfgMsg("📋 已複製（fallback）", "ok"); }
+  });
+  $("#cfgLinkOpen").addEventListener("click", () => {
+    const v = $("#cfgLinkOut").value;
+    if (!v) { cfgMsg("未有連結，先撳「🔗 產生設定連結」", "err"); return; }
+    window.open(v, "_blank");
+  });
+
   // 把本機資料合併上雲端
   $("#syncPush").addEventListener("click", async () => {
     if (!(DB.adapter && DB.adapter.pushLocal)) { cfgMsg("ℹ️ 現時係本機模式，冇雲端可以上傳。先在上面揀 GitHub 模式。", "err"); return; }
@@ -1894,6 +1959,7 @@ async function boot() {
   });
 
   wireSettings();
+  if (SETUP_IMPORTED) toast("🔗 已由設定連結自動套用雲端設定", 3200);
   await photoCache.init();
   await reconnect();
   switchView("add");

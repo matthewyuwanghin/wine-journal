@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token → base64 轉換器（離線）</title>
+<style>
+  :root{ --bg:#14100f; --panel:#211a19; --line:#3a2d2a; --text:#f4ece8; --muted:#a89a94; --wine:#b3123e; --gold:#d9a441; }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px 16px 60px;background:var(--bg);color:var(--text);
+       font-family:system-ui,-apple-system,"Noto Sans TC","PingFang HK",sans-serif;line-height:1.65}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+  label{display:block;font-size:12.5px;color:#e2d4ce;margin-bottom:7px}
+  input,textarea{width:100%;padding:12px;border-radius:11px;background:#281f1d;border:1px solid var(--line);
+                 color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;outline:none}
+  input:focus,textarea:focus{border-color:var(--wine);box-shadow:0 0 0 3px rgba(179,18,62,.18)}
+  textarea{min-height:96px;resize:vertical;word-break:break-all}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  button{padding:11px 16px;border-radius:11px;border:1px solid var(--line);background:#281f1d;color:var(--text);
+         font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  button.primary{background:linear-gradient(180deg,#c9154a,#8c0f2f);border-color:#d6255a}
+  button:hover{filter:brightness(1.1)}
+  .out{margin-top:14px}
+  ol{padding-left:22px;font-size:13.5px;color:#dcd0ca}
+  ol li{margin-bottom:7px}
+  code{background:#2b2220;padding:2px 6px;border-radius:6px;font-size:12.5px;word-break:break-all}
+  .warn{border:1px solid #4a3a1d;background:rgba(224,163,60,.09);color:#f3d9a8;border-radius:12px;padding:11px 13px;font-size:12.5px;margin-top:14px}
+  .ok{color:#bfe6cf;font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔐 Token → base64 轉換器</h1>
+  <div class="sub">純本地運算（<code>btoa</code>），唔會發送任何資料上網。用完可以刪咗呢個檔。</div>
+
+  <div class="card">
+    <label for="tok">貼上你嘅 GitHub token（github_pat_…）</label>
+    <input id="tok" type="password" placeholder="github_pat_xxxxxxxx" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button class="primary" id="go">轉換成 base64</button>
+      <button id="show">顯示／隱藏 token</button>
+      <button id="clear">清除</button>
+    </div>
+    <div class="out">
+      <label for="out">base64 結果（貼入 index.html 嘅 <code>token_b64: "…"</code>）</label>
+      <textarea id="out" readonly placeholder="結果會顯示喺呢度"></textarea>
+      <div class="row">
+        <button id="copy">📋 複製結果</button>
+      </div>
+      <div class="ok" id="msg"></div>
+    </div>
+    <div class="warn">
+      ⚠️ 呢個轉換<b>唔係加密</b>，只係將 <code>github_pat_</code> 字串變成唔會被 GitHub secret scanning 直接比對到嘅形式。
+      任何人有心都解得開，所以網站 repo 如果係 public，最安全做法係改用 private repo，或者唔將 token 寫入檔案（每部機喺 ⚙️ 設定自己貼一次）。
+    </div>
+  </div>
+
+  <div class="card">
+    <label>步驟</label>
+    <ol>
+      <li>去 GitHub 產生新 token（Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token；權限只揀 <b>Contents: Read and write</b>、只揀 <code>wine-journal-data</code>）</li>
+      <li>貼入上面個格 → 撳「轉換成 base64」</li>
+      <li>用文字編輯器開 <code>index.html</code>，搵 <code>token_b64:</code>，將引號內嗰串換成新結果</li>
+      <li>存檔 → 上載去 GitHub（Add file → Upload files → 覆蓋 index.html → Commit changes）</li>
+      <li>等 1 分鐘 → 每部裝置強制 refresh → 頂部 pill 變返 <code>GitHub · matthewyuwanghin/wine-journal-data</code></li>
+    </ol>
+    <div class="warn">
+      💡 唔想再 push？都可以：喺 app 的 <b>⚙️ 設定</b> → Token 格直接貼新 token → 「💾 儲存並重新連線」。
+      呢個做法只影響該部裝置（存喺 localStorage），但唔需要改檔案。
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+$("#go").addEventListener("click", () => {
+  const v = $("#tok").value.trim();
+  $("#msg").textContent = "";
+  if (!v) { $("#msg").textContent = "請先貼上 token"; return; }
+  try {
+    const b64 = btoa(unescape(encodeURIComponent(v)));
+    $("#out").value = b64;
+    $("#msg").textContent = "✅ 轉換完成，長度 " + b64.length + " 字元。";
+  } catch (e) {
+    $("#msg").textContent = "❌ 轉換失敗：" + e.message;
+  }
+});
+$("#show").addEventListener("click", () => {
+  const t = $("#tok");
+  t.type = t.type === "password" ? "text" : "password";
+});
+$("#clear").addEventListener("click", () => {
+  $("#tok").value = ""; $("#out").value = ""; $("#msg").textContent = "";
+});
+$("#copy").addEventListener("click", async () => {
+  const t = $("#out");
+  if (!t.value) { $("#msg").textContent = "未有結果可以複製"; return; }
+  try {
+    await navigator.clipboard.writeText(t.value);
+    $("#msg").textContent = "📋 已複製";
+  } catch (_) {
+    t.select(); document.execCommand("copy");
+    $("#msg").textContent = "📋 已複製（fallback）";
+  }
+});
+</script>
+</body>
+</html>

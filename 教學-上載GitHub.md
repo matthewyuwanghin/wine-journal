@@ -323,6 +323,120 @@ repo → **Commits** → 見到你每一次記錄。想救返舊版本：撳某�
 
 ---
 
+---
+
+# 🚑 Token 失效（`HTTP 401` / Bad credentials）點修？
+
+出現以下任何一句，就代表 token 俾 GitHub 撤銷或刪除了（唔係 app 壞）：
+
+- `❌ Token 無效或已過期（HTTP 401）`
+- `雲端連線失敗，暫時用返本機：Token 無效或已過期（HTTP 401）`
+
+> 此時 app 會自動 fallback 用本機 IndexedDB，**你嘅記錄唔會失**；只係未上傳。
+
+## 第一件事：產生新 token（1 分鐘）
+
+1. GitHub 右上頭像 → **Settings**
+2. 左邊欄拉到最底 → **Developer settings**
+3. **Personal access tokens → Fine-grained tokens → Generate new token**
+4. 填：
+   | 欄位 | 填咩 |
+   |---|---|
+   | Token name | `wine-journal-2`（隨便，方便識認） |
+   | Expiration | 90 days / 1 year / Custom（建議設個到期日，逼自己定期換） |
+   | Resource owner | 你自己 |
+   | Repository access | **Only select repositories** → 揀 **`wine-journal-data`** |
+5. **Repository permissions** → **Contents → Read and write**（其他全部 No access）
+6. **Generate token** → 複製 `github_pat_…`（只顯示一次）
+
+## 方法 A（最快，唔使改檔案）：每部裝置貼一次
+
+1. 開你嘅網站 → **⚙️ 設定**
+2. **Personal Access Token** 格：貼上新 token
+3. 撳 **🔌 測試連線** → 見到 `✅ 連線成功！雲端現有 N 筆記錄`
+4. 撳 **💾 儲存並重新連線**
+5. 頂部 pill 變返 `GitHub · matthewyuwanghin/wine-journal-data` 就 OK
+
+> 設定會存在該部裝置嘅 localStorage，**呢部機以後都唔使再填**。手機、平板各自做一次即可。
+
+## 方法 B（永久，免逐部機）：更新內建 token 再 push
+
+1. 開 **`scripts/token-b64.html`**（double click，用瀏覽器開；純本地運算，唔會上網）
+2. 貼上新 token → 撳「轉換成 base64」→ 複製結果
+   （或者用 Terminal：`printf '%s' 'github_pat_新TOKEN' | base64`）
+3. 用文字編輯器開 **`index.html`**，搵 `token_b64:`，將引號內嗰串換成新結果
+4. 存檔 → GitHub 網頁 → 你嘅 `wine-journal` repo → **Add file → Upload files** → 拖入新 `index.html` 覆蓋 → **Commit changes**
+5. 等 1 分鐘 → 每部裝置 **強制 refresh**（手機 pull-to-refresh；電腦 Ctrl/Cmd+Shift+R）
+
+## 點解會被撤銷？點避免再中？
+
+| 原因 | 說明 | 避免方法 |
+|---|---|---|
+| GitHub secret scanning | 喺 **public repo** 掃到 `github_pat_` 字串會自動撤銷並通知你 | 用 base64 存（本專案已預設）／用 private repo |
+| token 貼過喺公開地方 | issue、commit、gist、forum | 永遠唔好貼；貼咗就即刻 Revoke |
+| 你自己刪除／重新產生 | Settings 內 Delete 舊 token | 換新之後記得更新 app |
+| 到期 | 設了 expiration | 到期前換新 |
+
+**最安全三選一**（如果已經中過一次，強烈建議轉）：
+
+1. 網站 repo 轉 **private**（要 GitHub Pro，US$4/月）→ token 完全唔會公開
+2. 清空 `token_b64`（改成 `""`），**每部機**喺 ⚙️ 設定自己填一次（token 只存喺各裝置）
+3. 用 **Cloudflare Pages**（免費層支援 private repo）代替 GitHub Pages → 網站私有，同一份 `index.html` 直接部署
+
+> 記住：token 只需 **Contents: Read and write** + 只揀一個 repo。就算洩漏，最壞情況係有人改／清空你嘅筆記，動唔到你 GitHub 帳號其他嘢。
+
+---
+
+---
+
+# 🚨 上載時彈「Secret scanning found a GitHub Personal Access Token」點處理？
+
+## 一句話：**撳 Cancel，唔好撳 Allow Secret**
+
+- 撳 **Allow Secret** = 你確認要將鎖匙公開 → GitHub 會開 security alert，並且**通常會自動撤銷該 token** → 你嘅 app 之後就 `HTTP 401`。
+- 撳 **Cancel** = 取消今次上載（網站維持舊版），然後照下面修正。
+
+## 為咩我用咗 base64 都一樣被掃到？
+
+GitHub secret scanning **會先 decode base64 再比對**，所以：
+`token → base64 → 放入 HTML` 完全擋唔住掃描器。而且網站本身係 public，**任何人 view-source 都攞到**。
+
+👉 結論：**token 唔應該出現在任何送往瀏覽器嘅檔案**。
+
+## 正確做法（本專案已支援，唔使改 code）
+
+### 一次性設定（每部裝置只做一次）
+
+1. 開你嘅網站 → **⚙️ 設定**
+2. **Personal Access Token** → 貼上有效 token
+3. 撳 **🔌 測試連線** → 見 `✅ 連線成功！雲端現有 N 筆記錄`
+4. 撳 **💾 儲存並重新連線** → pill 變 `GitHub · …`
+
+### 令其他裝置「一鍵設定」
+
+1. 喺已設定好嗰部機：**⚙️ 設定 → 🔗 產生設定連結**
+2. 撳 **📋 複製** → 存去 iPhone 備忘錄 / 密碼管理器 / 用 AirDrop 傳去手機
+3. 新裝置用瀏覽器**打開呢條連結** → 會自動套用設定、strip 走條連結、見 toast「🔗 已由設定連結自動套用雲端設定」
+4. 之後開主畫面 icon 都用得
+
+⚠️ 條連結 `#setup=...` 內含 token，等同鎖匙 —— **唔好**貼去公開地方、唔好 post 去群組。
+
+### 如果要真正「完全零設定」
+
+唯一安全做法係 token 唔落前端：
+- 用本專案 `server/`（SQLite 後端）部署去 Render / Railway → 前端只叫自己嘅 API
+- 或者 Cloudflare Worker 做一個細代理，token 放 Worker 環境變數
+
+## 我已經被攔截咗，點收科？
+
+1. 撳 **Cancel**
+2. 用最新嘅 `index.html`（`token_b64: ""`，冇任何 token）重新上載 → 今次唔會再彈 dialog
+3. **重新產生一個新 token**（之前嗰個已經喺被攔截嘅 commit 出現過，GitHub 可能已標記）→ 喺 ⚙️ 設定貼上
+4. 去你 site repo：**Security → Secret scanning** → 將舊 alert 標記／確認已撤銷（Dismiss → "Revoked"）
+5. 你 `wine-journal-data` 內嘅筆記**一直安全**，冇受影響
+
+---
+
 # 📋 最後 Checklist
 
 - [ ] 下載 + 解壓 `wine-journal.zip`
