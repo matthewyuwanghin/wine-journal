@@ -272,7 +272,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .listgrid .entry .sub{font-size:11px;margin-top:2px}
 .listgrid .entry .meta-line{justify-content:center;margin-top:5px;font-size:11px;gap:6px}
-/* 相簿模式：評級 + hashtag（同清單一樣，單行置中） */
+/* 相簿模式：只顯示 hashtag（評級隱藏，同 v4.2） */
 .listgrid .entry .tagrow{
   display:flex;justify-content:center;flex-wrap:nowrap;gap:4px;
   margin-top:6px;overflow:hidden;
@@ -281,9 +281,15 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   font-size:10px;padding:2px 6px;line-height:1.5;
   max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 auto;
 }
-.listgrid .entry .tagrow .tag.quality{max-width:110px}
+.listgrid .entry .tagrow .tag.quality{display:none}   /* 相簿唔顯示評級 */
 .listgrid .entry .tagrow .tag.more-t{color:var(--muted);border-style:dashed}
-.listgrid .entry .meta-line .sc{display:inline}     /* 分數喺 meta-line（同清單一樣） */
+.entry .thumb .badge-sc{
+  position:absolute;top:4px;right:4px;display:none;
+  background:linear-gradient(180deg,#e3b356,#c1902f);color:#241a08;
+  font-weight:800;font-size:10.5px;padding:2px 6px;border-radius:999px;line-height:1.4;
+}
+.listgrid .entry .thumb .badge-sc{display:inline-block}
+.listgrid .entry .meta-line .sc{display:none}      /* 相簿唔顯示分數（同 v4.2） */
 .listgrid .entry .meta-line .dt{display:none}      /* 相簿模式省位 */
 
 .listgrid .entry .more{width:26px;height:26px;font-size:14px;top:6px;right:6px}
@@ -1108,7 +1114,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v4.3 · 2026-11-21 · 相簿顯示評級+分數+hashtag";
+const APP_VERSION = "v4.2 · 2026-11-21 · 相簿模式顯示 hashtag";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -2055,7 +2061,8 @@ function renderList() {
       <div class="thumb" data-thumb="${esc(r.id)}">${
         r.photo ? `<img src="${esc(r.photo)}" alt="酒標">`
         : r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="酒標" referrerpolicy="no-referrer" loading="lazy" data-broken="1">`
-        : `<span class="ph">🍷</span><span class="find">🔍</span>`}</div>
+        : `<span class="ph">🍷</span><span class="find">🔍</span>`}${
+        r.score ? `<span class="badge-sc">★ ${esc(r.score)}</span>` : ""}</div>
       <div class="body">
         <div class="name">${sw ? `<span class="swatch" style="background:${sw}"></span>` : ""}<span>${name}</span></div>
         <div class="sub">${meta || "—"}</div>
