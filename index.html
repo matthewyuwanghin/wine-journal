@@ -264,7 +264,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 .entry .more:hover{background:rgba(255,255,255,.1);color:#fff}
 
 /* 格狀模式：大相片 */
-.listgrid{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.listgrid{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
 .listgrid .entry{display:block;padding:9px;text-align:center}
 .listgrid .entry .thumb{width:100%;height:auto;aspect-ratio:3/4;border-radius:10px}
 .listgrid .entry .body{padding-right:0}
@@ -273,6 +273,14 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 .listgrid .entry .sub{font-size:11px;margin-top:2px}
 .listgrid .entry .meta-line{justify-content:center;margin-top:5px;font-size:11px;gap:6px}
 .listgrid .entry .tagrow{display:none}
+.listgrid .entry .meta-line .sc{display:none}      /* 分數已用相片徽章顯示 */
+.listgrid .entry .meta-line .dt{display:none}      /* 相簿模式省位 */
+.entry .thumb .badge-sc{
+  position:absolute;top:4px;right:4px;display:none;
+  background:linear-gradient(180deg,#e3b356,#c1902f);color:#241a08;
+  font-weight:800;font-size:10.5px;padding:2px 6px;border-radius:999px;line-height:1.4;
+}
+.listgrid .entry .thumb .badge-sc{display:inline-block}
 .listgrid .entry .more{width:26px;height:26px;font-size:14px;top:6px;right:6px}
 
 .entry .swatch{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px;border:1px solid rgba(255,255,255,.25)}
@@ -592,8 +600,8 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
           <option value="name-asc">名稱 A → Z</option>
         </select>
         <div class="viewtoggle" role="group" aria-label="顯示方式">
-          <button type="button" id="vCard" data-mode="card" aria-pressed="true" title="清單（睇資料）">☰</button>
-          <button type="button" id="vGrid" data-mode="grid" aria-pressed="false" title="格狀（睇酒標）">▦</button>
+          <button type="button" id="vCard" data-mode="card" aria-pressed="false" title="清單（睇資料）">☰</button>
+          <button type="button" id="vGrid" data-mode="grid" aria-pressed="true" title="相簿（睇酒標）">▦</button>
         </div>
       </div>
       <div class="list" id="listBody"></div>
@@ -1095,7 +1103,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v4.0 · 2026-11-18 · 酒櫃首頁 + 卡片重設計";
+const APP_VERSION = "v4.1 · 2026-11-21 · 酒櫃預設相簿模式";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -1494,7 +1502,7 @@ const STATE = {
   editingId: null,
   photo: null,
   view: "list",
-  listMode: "card",
+  listMode: "grid",
   filters: { q: "", cat: "", country: "", sort: "date-desc" },
 };
 
@@ -1992,8 +2000,8 @@ function filtered() {
 }
 
 function setListMode(m) {
-  STATE.listMode = m === "grid" ? "grid" : "card";
-  try { localStorage.setItem("wj.listmode", STATE.listMode); } catch (_) {}
+  STATE.listMode = m === "card" ? "card" : "grid";   // 預設 = 相簿
+  try { localStorage.setItem("wj.listmode.v2", STATE.listMode); } catch (_) {}
   const c = $("#vCard"), g = $("#vGrid");
   if (c) c.setAttribute("aria-pressed", STATE.listMode === "card" ? "true" : "false");
   if (g) g.setAttribute("aria-pressed", STATE.listMode === "grid" ? "true" : "false");
@@ -2039,7 +2047,8 @@ function renderList() {
       <div class="thumb" data-thumb="${esc(r.id)}">${
         r.photo ? `<img src="${esc(r.photo)}" alt="酒標">`
         : r.photoUrl ? `<img src="${esc(r.photoUrl)}" alt="酒標" referrerpolicy="no-referrer" loading="lazy" data-broken="1">`
-        : `<span class="ph">🍷</span><span class="find">🔍</span>`}</div>
+        : `<span class="ph">🍷</span><span class="find">🔍</span>`}${
+        r.score ? `<span class="badge-sc">★ ${esc(r.score)}</span>` : ""}</div>
       <div class="body">
         <div class="name">${sw ? `<span class="swatch" style="background:${sw}"></span>` : ""}<span>${name}</span></div>
         <div class="sub">${meta || "—"}</div>
@@ -3247,9 +3256,9 @@ async function boot() {
   await reconnect();
   applyLockUI();
   try {
-    const lm = localStorage.getItem("wj.listmode");
-    if (lm === "grid") STATE.listMode = "grid";
-  } catch (_) {}
+    const lm = localStorage.getItem("wj.listmode.v2");
+    STATE.listMode = lm === "card" ? "card" : "grid";   // 未揀過就預設相簿
+  } catch (_) { STATE.listMode = "grid"; }
   setListMode(STATE.listMode);
   // 預設首頁 = 酒櫃
   switchView("list");
