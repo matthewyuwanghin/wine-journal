@@ -211,6 +211,15 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 @media(min-width:700px){.toolbar{grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr))}}
 .toolbar select,.toolbar input{padding:10px 12px}
 .list{padding:14px}
+.cellar-tabs{display:flex;gap:8px;padding:0 18px 12px;overflow-x:auto}
+.cellar-tab{
+  display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:8px 14px;
+  border-radius:999px;border:1px solid var(--line);background:var(--panel-2);
+  color:var(--muted);font-size:13px;white-space:nowrap;cursor:pointer;
+}
+.cellar-tab span{font-size:11px;opacity:.8}
+.cellar-tab.active{color:#fff;border-color:#813248;background:rgba(179,18,62,.22)}
+.cellar-tab:active{transform:scale(.98)}
 .viewtoggle{display:flex;gap:4px;border:1px solid var(--line);border-radius:11px;padding:3px;background:var(--panel-2)}
 .viewtoggle button{
   width:34px;height:30px;border-radius:8px;border:0;background:transparent;
@@ -497,6 +506,8 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   .entry .more{width:34px;height:34px;font-size:17px}
   .listgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .toolbar{padding:12px 14px;gap:8px}
+  .cellar-tabs{padding:0 14px 10px;gap:7px}
+  .cellar-tab{min-height:42px;padding:8px 12px;font-size:12.5px}
   .kpi .v{font-size:22px}
   .bar-row{grid-template-columns:minmax(0,90px) minmax(0,1fr) 28px;font-size:12px}
 
@@ -552,6 +563,13 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
         <span class="hint">基本資料 + 飲用情境（可留空）</span>
       </div>
       <div class="panel-body">
+        <div class="field" style="max-width:360px;margin-bottom:14px">
+          <label for="bottleStatus">酒款狀態</label>
+          <select id="bottleStatus">
+            <option value="tasted">🍷 已飲過</option>
+            <option value="cellar">🏠 家中儲存（未開）</option>
+          </select>
+        </div>
         <div class="grid" id="metaGrid"></div>
         <div id="metaMoreWrap" style="margin-top:14px">
           <button type="button" class="btn sm ghost" id="metaMoreBtn">＋ 酒杯 · 溫度 · 醒酒（選填）</button>
@@ -593,12 +611,16 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
     <div class="panel">
       <div class="panel-head">
         <span class="num">CELLAR</span>
-        <h2>我飲過嘅酒</h2>
+        <h2>酒櫃</h2>
         <span class="hint" id="listCount"></span>
         <button class="btn sm" id="exportJson">⬇︎ JSON 備份</button>
         <button class="btn sm" id="exportCsv">⬇︎ CSV</button>
         <button class="btn sm" id="importBtn">⬆︎ 匯入 JSON</button>
         <input type="file" id="importFile" accept=".json,application/json" class="hidden">
+      </div>
+      <div class="cellar-tabs" role="tablist" aria-label="酒款狀態">
+        <button type="button" class="cellar-tab active" data-cellar-status="tasted" role="tab" aria-selected="true">🍷 已飲過 <span id="countTasted">0</span></button>
+        <button type="button" class="cellar-tab" data-cellar-status="cellar" role="tab" aria-selected="false">🏠 家中未開 <span id="countCellar">0</span></button>
       </div>
       <div class="toolbar">
         <input type="text" id="q" placeholder="🔍 搜尋酒名 / 酒莊 / 產區 / 葡萄 / 香氣描述…">
@@ -1114,7 +1136,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v4.4 · 2026-11-21 · 編輯儲存保留酒標相片";
+const APP_VERSION = "v4.5 · 2026-11-18 · 酒櫃分為已飲過／家中未開";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -1515,6 +1537,7 @@ const STATE = {
   photoRemoved: false,
   view: "list",
   listMode: "grid",
+  cellarTab: "tasted",
   filters: { q: "", cat: "", country: "", sort: "date-desc" },
 };
 
@@ -1830,6 +1853,8 @@ function collectForm() {
     if (v) rec[f.k] = v;
   });
   if (!rec.category) rec.category = "other";
+  const statusEl = $("#bottleStatus");
+  rec.bottleStatus = statusEl && statusEl.value === "cellar" ? "cellar" : "tasted";
   if (!rec.date) rec.date = todayISO();
 
   // SAT 下拉 / 文字
@@ -1868,6 +1893,8 @@ function fillForm(rec) {
   resetForm(true);
   if (!rec) return;
   STATE.editingId = rec.id;
+  const bottleStatus = $("#bottleStatus");
+  if (bottleStatus) bottleStatus.value = rec.bottleStatus === "cellar" ? "cellar" : "tasted";
   META_FIELDS.forEach((f) => {
     if (f.region) { const c = $("#f_country"); if (c) c.value = rec.country || ""; rebuildRegionOptions(); }
     setMetaValue(f, rec[f.k]);
@@ -1898,6 +1925,7 @@ function fillForm(rec) {
 
 function resetForm(silent) {
   STATE.editingId = null; STATE.photo = null; STATE.photoRemoved = false;
+  const bottleStatus = $("#bottleStatus"); if (bottleStatus) bottleStatus.value = "tasted";
   $$("[data-path]").forEach((el) => { el.value = ""; });
   $$("[data-meta-custom]").forEach((el) => { el.value = ""; el.classList.add("hidden"); });
   $$("[data-gchip]").forEach((b) => b.setAttribute("aria-pressed", "false"));
@@ -1956,6 +1984,7 @@ $("#saveBtn").addEventListener("click", async () => {
   const rec = collectForm();
   try {
     await DB.adapter.put(rec);
+    STATE.cellarTab = rec.bottleStatus === "cellar" ? "cellar" : "tasted";
     await refresh();
     toast(STATE.editingId ? "✅ 已更新記錄" : "✅ 已儲存！乾杯 🍷");
     resetForm(true);
@@ -2042,6 +2071,10 @@ function setListMode(m) {
 const vc = $("#vCard"), vg = $("#vGrid");
 if (vc) vc.addEventListener("click", () => setListMode("card"));
 if (vg) vg.addEventListener("click", () => setListMode("grid"));
+$$("[data-cellar-status]").forEach((b) => b.addEventListener("click", () => {
+  STATE.cellarTab = b.dataset.cellarStatus === "cellar" ? "cellar" : "tasted";
+  renderList();
+}));
 
 function renderList() {
   // 篩選器選項
@@ -2053,14 +2086,22 @@ function renderList() {
   cSel.innerHTML = `<option value="">所有國家</option>` + usedCountries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   cSel.value = STATE.filters.country;
 
-  const rows = filtered();
-  $("#listCount").textContent = rows.length === STATE.records.length
-    ? `共 ${STATE.records.length} 筆`
-    : `${rows.length} / ${STATE.records.length} 筆`;
+  const countTasted = STATE.records.filter((r) => r.bottleStatus !== "cellar").length;
+  const countCellar = STATE.records.filter((r) => r.bottleStatus === "cellar").length;
+  $("#countTasted").textContent = countTasted;
+  $("#countCellar").textContent = countCellar;
+  const tabButtons = $$("[data-cellar-status]");
+  tabButtons.forEach((b) => {
+    const active = b.dataset.cellarStatus === STATE.cellarTab;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  const rows = filtered().filter((r) => (r.bottleStatus === "cellar" ? "cellar" : "tasted") === STATE.cellarTab);
+  $("#listCount").textContent = `${rows.length} 筆`;
 
   if (!rows.length) {
     $("#listBody").innerHTML = `<div class="empty"><span class="big">🍾</span>
-      ${STATE.records.length ? "冇符合條件嘅記錄，試下改搜尋字。" : "仲未有記錄。<br>撳下面嘅 <b>＋ 記錄</b> 新增你第一杯酒。"}</div>`;
+      ${STATE.records.length ? "呢個分類暫時冇酒，或者冇符合搜尋條件嘅記錄。" : "仲未有記錄。<br>撳 <b>＋ 記錄</b> 新增第一支酒。"}</div>`;
     return;
   }
 
