@@ -1104,6 +1104,19 @@ const serverAdapter = {
     }
     return rec;
   },
+  async putMany(records) {
+    const r = await fetch(apiUrl("api/tastings/bulk"), {
+      method: "POST",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ records })
+    });
+    let result = {};
+    try { result = await r.json(); } catch (_) {}
+    if (!r.ok || result.ok === false) {
+      throw new Error("批次匯入失敗 HTTP " + r.status + (result.error ? " · " + result.error : ""));
+    }
+    return Number(result.imported) || records.length;
+  },
   async del(id) {
     const r = await fetch(apiUrl("api/tastings/" + encodeURIComponent(id)), { method: "DELETE", headers: apiHeaders() });
     if (!r.ok) throw new Error("刪除失敗 HTTP " + r.status);
@@ -1136,7 +1149,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v4.5 · 2026-11-18 · 酒櫃分為已飲過／家中未開";
+const APP_VERSION = "v4.6 · 2026-11-18 · JSON 批次匯入防 503";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -2916,17 +2929,42 @@ async function importJSON(file) {
   const recs = Array.isArray(data) ? data : data.records;
   if (!Array.isArray(recs)) { toast("找唔到 records 陣列", 3000); return; }
   if (!confirm(`準備匯入 ${recs.length} 筆記錄，同 ID 的會被覆蓋。繼續？`)) return;
+
+  // 若來源檔有相同 ID，保留第一筆原 ID，其餘重發 ID，避免資料互相覆蓋。
+  const seen = new Set();
+  let repairedIds = 0;
+  const now = new Date().toISOString();
+  const ready = recs.map((item) => {
+    const rec = Object.assign({}, item);
+    if (!rec.id || seen.has(String(rec.id))) {
+      rec.id = uid();
+      repairedIds++;
+    }
+    rec.id = String(rec.id);
+    seen.add(rec.id);
+    if (!rec.name) rec.name = "未命名酒款";
+    if (!rec.createdAt) rec.createdAt = rec.updatedAt || now;
+    rec.updatedAt = now;
+    return rec;
+  });
+
   let n = 0;
-  for (const r of recs) {
-    const rec = Object.assign({}, r);
-    if (!rec.id) rec.id = uid();
-    if (!rec.createdAt) rec.createdAt = rec.updatedAt || new Date().toISOString();
-    rec.updatedAt = new Date().toISOString();
-    try { await DB.adapter.put(rec); n++; } catch (_) {}
+  if (typeof DB.adapter.putMany === "function") {
+    toast(`正在一次過匯入 ${ready.length} 筆…`, 2500);
+    try { n = await DB.adapter.putMany(ready); }
+    catch (err) {
+      toast("批次匯入失敗（雲端資料未部分寫入）：" + (err && err.message ? err.message : "未知錯誤"), 6000);
+      return;
+    }
+  } else {
+    for (const rec of ready) {
+      try { await DB.adapter.put(rec); n++; } catch (_) {}
+    }
   }
   await refresh();
-  toast(`已匯入 ${n} 筆記錄`);
+  toast(`✅ 已匯入 ${n} 筆記錄` + (repairedIds ? `（另修正 ${repairedIds} 個重複 ID）` : ""), 5000);
 }
+
 $("#exportJson").addEventListener("click", exportJSON);
 $("#exportJson2").addEventListener("click", exportJSON);
 $("#exportCsv").addEventListener("click", exportCSV);
