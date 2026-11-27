@@ -242,7 +242,7 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
   background:linear-gradient(160deg,#2c2220,#1b1514);display:grid;place-items:center;
   border:1px solid var(--line);position:relative;
 }
-.entry .thumb img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}
+.entry .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;display:block}
 .entry .thumb .ph{font-size:30px;line-height:1}
 .entry .thumb .find{
   position:absolute;right:3px;bottom:3px;font-size:10px;line-height:1;
@@ -398,9 +398,9 @@ input::placeholder,textarea::placeholder{color:#7d6f6a}
 .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:10px}
 .photo-grid button{
   padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1b1514;
-  cursor:pointer;aspect-ratio:3/4;
+  cursor:pointer;aspect-ratio:3/4;position:relative;
 }
-.photo-grid button img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}
+.photo-grid button img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;display:block}
 .photo-grid button[aria-pressed="true"]{border-color:var(--wine);box-shadow:0 0 0 2px rgba(179,18,62,.45)}
 .photo-grid button:active{opacity:.75}
 
@@ -1149,7 +1149,7 @@ memoryAdapter.label = "暫存模式 · 不會保存";
 memoryAdapter.tone = "warn";
 
 /* ---------------- 2b. 使用者設定（存在呢部裝置的 localStorage） ---------------- */
-const APP_VERSION = "v4.6 · 2026-11-18 · JSON 批次匯入防 503";
+const APP_VERSION = "v4.7 · thumbnail fit fix";
 const CFG_KEY = "wj.settings.v2";   // v2：改用 Cloudflare Worker 代理做預設
 const DEFAULT_CFG = {
   mode: "auto",                 // auto | local | github | gist
@@ -3395,5 +3395,5 @@ async function boot() {
 
 boot();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a6108dc4ebe1643b',t:'MTc5NTc3NjQzNQ=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a6108dc4ebe1643b',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a612e7c9a94f07ab',t:'MTc5NTgwMTA5NA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a612e7c9a94f07ab',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
